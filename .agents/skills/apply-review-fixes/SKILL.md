@@ -57,7 +57,7 @@ description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事�
 
 ## 修正完了報告
 
-- **Resolved At**: <YYYY-MM-DD HH:mm>
+- **Resolved At**: <YYYY-MM-DD hh:mm:ss>
 - **Status**: Resolved
 
 ### 実施した修正内容
