@@ -1,6 +1,6 @@
 ---
 name: review-changes
-description: 本ブランチにおけるコードおよび仕様書の変更点をテスト通過確認後にレビューし、指摘事項を docs/review/<branch>/ 配下に個別ファイルとして生成します。
+description: 本ブランチにおけるコードおよび仕様書の変更点をテスト通過確認後にレビューし、指摘事項を docs/review/<branch>/ 配下に個別ファイルとして生成します。レビューを行うときは必ずこのSKILLを読み込んでください。
 ---
 
 # review-changes Skill
