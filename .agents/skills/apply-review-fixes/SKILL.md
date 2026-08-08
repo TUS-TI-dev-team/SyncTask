@@ -1,6 +1,6 @@
 ---
 name: apply-review-fixes
-description: docs/review/<branch>/ 配下の未修正のレビュー指摘事項（Status: Open）を確認し、修正計画の策定、コード/仕様書の修正、テスト検証、および結果の追記・完了化を行います。docs/review/ 配下のレビュー内容の修正を行う際は必ずこのSKILLを読み込んでください。
+description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事項（Status: Open）を確認し、修正計画の策定、コード/仕様書の修正、テスト検証、および結果の追記・完了化を行います。docs/review/ 配下のレビュー内容の修正を行う際は必ずこのSKILLを読み込んでください。"
 ---
 
 # apply-review-fixes Skill
