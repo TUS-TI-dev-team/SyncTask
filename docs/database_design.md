@@ -16,13 +16,20 @@
 | ユーザー名 | `USERNAME` | `VARCHAR(20)` / `UNIQUE, NOT NULL` | 2〜20文字、英大小数字 | ✅ |
 | メールアドレス | `EMAIL` | `VARCHAR(255)` / `UNIQUE, NOT NULL` | 認証用メール | ✅ |
 | パスワードハッシュ | `PASSWORD_HASH` | `VARCHAR(255)` / `NOT NULL` | ハッシュ化保存 | ✅ |
-| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 5分ごとにリセット | ✅ |
+| 削除フラグ (論理削除) | `IS_DELETED` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | アカウント削除時は論理削除 | ✅ |
+| アカウント削除日時 | `DELETED_AT` | `TIMESTAMPTZ` | 削除処理タイムスタンプ | ✅ |
+| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 5分ごとにリセット (判定時動的リセット) | ✅ |
 | ログイン最終失敗日時 | `LOGIN_LAST_FAILED_AT` | `TIMESTAMPTZ` | 最終失敗タイムスタンプ | ✅ |
 | ロック解除日時 | `LOGIN_LOCK_UNTIL` | `TIMESTAMPTZ` | 5回失敗で30分間ロック | ✅ |
-| パスワード変更失敗回数 | `CHPASS_FAILED_COUNT` | `INT` / `DEFAULT 0` | 5分ごとにリセット | ✅ |
+| パスワード変更失敗回数 | `CHPASS_FAILED_COUNT` | `INT` / `DEFAULT 0` | 5分ごとにリセット (判定時動的リセット) | ✅ |
 | パスワード変更最終失敗日時 | `CHPASS_LAST_FAILED_AT` | `TIMESTAMPTZ` | 最終失敗タイムスタンプ | ✅ |
 | 作成日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
 | 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
+
+> [!NOTE]
+> **削除方針のまとめ**
+> - **アカウント (`LOGIN_ACCOUNT`)**: 退会・アカウント削除時は論理削除 (`IS_DELETED = TRUE`, `DELETED_AT = NOW()`) を行います。
+> - **セッション (`LOGIN_SESSION`, `OTP_SESSION`)**: ログアウト・アカウント削除時および期限切れ時は物理削除 (`DELETE`) されます。
 
 ---
 
