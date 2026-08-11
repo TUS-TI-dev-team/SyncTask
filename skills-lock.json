@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "review": {
+      "source": "wxmb01/review-skill",
+      "sourceType": "github",
+      "skillPath": "review/SKILL.md",
+      "computedHash": "a52d05f8f195b9ecb5a96ba36814673698b53ea8ec88c886d5918f14ef5924fb"
+    }
+  }
+}
