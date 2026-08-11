@@ -50,8 +50,8 @@ description: "本ブランチにおけるコードおよび仕様書の変更点
 - **Severity**: [Major/Medium/Minor]
 - **Created At**: <YYYY-MM-DD hh:mm:ss>
 - **Target Files**:
-  - [<file1_basename>](<path_to_file1>)
-  - [<file2_basename>](<path_to_file2>)
+  - [<file1_basename>](<relative_path_from_repo_root_to_file1>)
+  - [<file2_basename>](<relative_path_from_repo_root_to_file2>)
   - ...
 
 ## 1. 問題の概要
