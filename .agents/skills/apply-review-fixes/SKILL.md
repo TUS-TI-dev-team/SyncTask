@@ -1,11 +1,11 @@
 ---
 name: apply-review-fixes
-description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事項（Status: Open）を確認し、修正計画の策定、コード/仕様書の修正、テスト検証、および結果の追記・完了化を行います。docs/review/ 配下のレビュー内容の修正を行う際は必ずこのSKILLを読み込んでください。"
+description: "指定されたレビュー指摘ファイル（`docs/review/<branch>/<error>.md`）、または指定がない場合は `docs/review/<branch>/` 配下の未修正のレビュー指摘事項（Status: Open）を確認し、修正計画の策定、コード/仕様書の修正、テスト検証、および結果の追記・完了化を行います。docs/review/ 配下のレビュー内容の修正を行う際は必ずこのSKILLを読み込んでください。"
 ---
 
 # apply-review-fixes Skill
 
-このスキルは、`review-changes` スキル等によって `docs/review/<sanitized-branch>/` 配下に作成されたレビュー指摘事項を確認し、修正計画の策定からコード/仕様書の修正適用、テスト検証、そして問題ファイルへの完了報告の追記までを自動で行います。
+このスキルは、`review-changes` スキル等によって `docs/review/<sanitized-branch>/` 配下に作成されたレビュー指摘事項（指定された特定の問題ファイル、または指定がない場合はディレクトリ配下の全ての `Status: Open` な問題ファイル）を確認し、修正計画の策定からコード/仕様書の修正適用、テスト検証、そして問題ファイルへの完了報告の追記までを自動で行います。
 
 ## 実行フロー
 
@@ -14,14 +14,20 @@ description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事�
 2. ブランチ名に含まれるスラッシュ `/` や特殊文字をハイフン `-` に置換して `<sanitized-branch>` とします。
 3. 対象のレビュー結果ディレクトリ `docs/review/<sanitized-branch>/` を確認します。
 
-### 2. 未修正（Status: Open）な問題ファイルの検出
-`docs/review/<sanitized-branch>/` 配下の Markdown ファイルを走査し、ヘッダーに `- **Status**: Open` が指定されている問題ファイルを抽出します。走査時は、Markdown ファイルの先頭10行だけ読み出して `- **Status**:` の行を確認してください。
+### 2. 対象問題ファイルの特定と未修正（Status: Open）チェック
+修正対象の指定の有無に応じ、以下の手順で対象問題ファイルを確定します：
+
+- **修正対象の指摘ファイルが明示的に指定されている場合**:
+  - ユーザー指示等で `docs/review/<sanitized-branch>/` 配下の特定の指摘ファイル（例: `docs/review/<sanitized-branch>/error.md` や `login-uncaught-exception.md` など、1個または複数）が指定された場合は、**指定されたファイル群**を修正対象とします。
+  - 指定されたファイルの内容（ヘッダー）を確認し、`- **Status**: Open` であることを確認します。（既に `- **Status**: Resolved` になっているものは修正不要としてスキップします。）
+- **修正対象の指摘ファイルが指定されていない場合（デフォルト）**:
+  - `docs/review/<sanitized-branch>/` 配下のすべての Markdown ファイルを走査し、ヘッダーに `- **Status**: Open` が指定されている問題ファイルを抽出します。走査時は、Markdown ファイルの先頭10行だけ読み出して `- **Status**:` の行を確認してください。
 
 > [!NOTE]
-> `Status: Open` のファイルが存在しない場合（全て `Resolved` または指摘ゼロの場合）は、「修正が必要なオープン問題はありません」と報告し、処理を完了してください。
+> 修正対象となる `Status: Open` のファイルが存在しない場合（全て `Resolved` の場合や、指定されたファイルが既に解決済み・存在しない場合）は、「修正が必要なオープン問題はありません」と報告し、処理を完了してください。
 
 ### 3. 修正計画の策定
-抽出された各問題ファイル（例: `login-uncaught-exception.md`）の指摘内容と推奨修正案(あれば)を精査し、修正計画を組み立てます：
+特定・抽出された各問題ファイル（例: `login-uncaught-exception.md`）の指摘内容と推奨修正案(あれば)を精査し、修正計画を組み立てます：
 - 対象コード/仕様書ファイルの特定
 - 具体的な変更内容の確認
 - 副作用や他機能への影響の確認
@@ -52,7 +58,7 @@ description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事�
 2. ファイルの末尾に `## 修正完了報告` セクションを追加・追記します。
 
 **追記フォーマット例**:
-```markdown
+```markdown/a
 
 ---
 
@@ -65,5 +71,5 @@ description: "docs/review/<branch>/ 配下の未修正のレビュー指摘事�
 <どのように問題を修正・解決したかの詳細な説明>
 
 ### 変更したファイル
-- [<file_basename>](file:///<absolute_path_to_file>)
+- [<file_basename>](<relative_path_from_repo_root_to_file>)
 ```
