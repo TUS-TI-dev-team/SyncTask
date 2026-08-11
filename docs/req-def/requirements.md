@@ -1,13 +1,5 @@
 # Requirements Definition
 
-## 関連設計ドキュメント
-- [技術スタック (tech_stack.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/tech_stack.md)
-- [画面構成 (screen_design.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/screen_design.md)
-- [データベース設計 (database_design.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/database_design.md)
-- [API設計 (api_design.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/api_design.md)
-- [処理設計 (process_design.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/process_design.md)
-- [定期ジョブ・バッチ設計 (job_design.md)](file:///c:/Users/ayumu_wkkd3w3/BoxForSomething/github/SyncTask/docs/job_design.md)
-
 ## システム概要
 ### 背景
 - チーム開発の学習のため
