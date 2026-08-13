@@ -1,6 +1,6 @@
 # タスク検索条件「締切日」における日付範囲・検索方式および未設定タスクの扱いに関する仕様不完全
 
-- **Status**: Open
+- **Status**: Resolved
 - **Severity**: Medium
 - **Created At**: 2026-08-13 20:40:00
 - **Target Files**:
@@ -49,3 +49,17 @@
 	- コメント
 		- 含むものを検索（部分一致）
 ```
+
+---
+
+## 修正完了報告
+
+- **Resolved At**: 2026-08-13 20:51:00
+- **Status**: Resolved
+
+### 実施した修正内容
+ヒアリング（`/grill-me`）での協議に基づき、要件定義書（`requirements.md`）の「タスク検索（and検索）」セクションにおいて、「締切日」指定時の絞り込み挙動を「指定日当日までの締め切り（〜指定日 23:59:59 JST）に該当する締切日時を持つタスクを検索（過去の未完了タスク等を含める、未設定タスクは除外、未指定時は絞り込みを行わない）」として明記・確定しました。
+
+### 変更したファイル
+- [requirements.md](file:///c:/Users/kazuh/Programming/repos/SyncTask/docs/req-def/requirements.md)
+
