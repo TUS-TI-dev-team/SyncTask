@@ -4,3 +4,4 @@ tmp/
 .agents/skills/*
 !.agents/skills/apply-review-fixes/
 !.agents/skills/review-changes/
+!.agents/skills/herdr-review-loop/

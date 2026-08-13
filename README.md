@@ -7,3 +7,8 @@
 docker compose up --build
 ```
 
+## Skills インストール
+
+```bash
+npx skills experimental_install
+```
