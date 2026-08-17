@@ -1,12 +1,13 @@
 ---
 name: herdr-review-loop
-description: "herdr CLIを使用して単一の子エージェント（worker）を自動制御・オーケストレーションし、レビュー実行（review-changes）、/clearによる履歴リセット、/grill-meとask_questionツールによる対話型方針ヒアリング、および修正適用（apply-review-fixes）の反復サイクルを指摘がなくなるまで全自動で実行するためのスキルです。"
+description: "herdr CLIを使用して子エージェント（worker）を自動制御・オーケストレーションし、複数レビュー対象に対する並列レビュー実行（review-changes）、指摘確認後のレビューワーカー終了、新規Tab/Agentによる/grill-meとask_questionツールを用いた対話型方針ヒアリングおよび修正適用（apply-review-fixes）、再レビュー反復サイクルを全指摘解消まで全自動で実行するためのスキルです。"
 ---
 
 # herdr-review-loop Skill
 
-このスキルは、`herdr` CLI（マルチエージェントオーケストレーションランタイム）を活用し、**親エージェント（Orchestrator）が単一の子エージェント（Worker）を全自動制御**します。
-レビュー実行・指摘抽出・`/clear` による履歴リセット・`/grill-me` による人間への方針ヒアリング（`ask_question` ツールの活用）・修正適用・再レビュー検証ループを自動反復し、すべてのレビュー指摘が解消されるまで完結させます。
+このスキルは、`herdr` CLI（マルチエージェントオーケストレーションランタイム）を活用し、**親エージェント（Orchestrator）が子エージェント（Worker）のライフサイクル管理とタスクオーケストレーションを全自動制御**します。
+
+レビュー対象が複数の場合は並列可能な範囲に分割して複数の子エージェント（1 worker につき 1 tab）で並列査読を行い、レビュー完了後に一旦ワーカーを破棄します。指摘が存在する場合は新しく単一の修正用エージェントを新規 Tab で起動して `/grill-me` と `ask_question` ツールによる方針ヒアリングおよび修正適用（`apply-review-fixes`）を一括して行い、すべてのレビュー指摘が解消されるまでこのサイクルを自動反復します。
 
 ---
 
@@ -21,115 +22,182 @@ flowchart TD
 
     subgraph Orchestrator ["親エージェント (Orchestrator)"]
         direction TB
-        O1["2. herdr CLI で子エージェント (worker) を1つ作成・起動"]
-        O2["3. worker にレビュー (/review-changes) を指示"]
-        O3["4. idle/done 待機 & docs/review/ の指摘有無を判定"]
-        O4["5. 指摘あり時: worker に /clear を送信"]
-        O5["6. worker に全指摘まとめて /grill-me /apply-review-fixes を指示"]
-        O6["6. worker からの質問を ask_question ツールで人間に中継 & 回答を worker に送信"]
-        O7["7. 修正完了 (idle/done) 待機"]
-        O8["8. worker に /clear を送信"]
-        O9["9. 3 に戻り再レビュー & 指摘0件までループ"]
+        O1["1. レビュー対象の確認 & N個の並列タスクに分割整理"]
+        O2["2. N個の Tab 作成 & worker-1..N を起動"]
+        O3["3. 各 worker-1..N に並列レビュー指示 & herdr agent wait で全完了待機"]
+        O4["4. docs/review/ の指摘集約 & N個のレビュー用 Tab を全クローズ"]
+        O5{"指摘あり？"}
+        O6["5. 修正用 Tab を新規作成 & 修正用 worker を起動"]
+        O7["6. worker に全指摘まとめて /grill-me /apply-review-fixes を指示"]
+        O8["6. worker の質問を ask_question で人間に中継 & 回答を送信"]
+        O9["7. 修正・検証完了待機 & 修正用 Tab をクローズ"]
+        O10["8. 1 に戻り再レビュー & 指摘0件までループ"]
     end
 
-    subgraph Worker ["子エージェント (worker Pane)"]
+    subgraph ReviewWorkers ["レビュー用子エージェント (worker-1..N / 各自個別Tab)"]
         direction TB
-        W1["/review-changes を実行して指摘ファイルを生成"]
-        W2["/clear でコンテキストをリセット"]
-        W3["/grill-me で修正方針の質問を出力"]
-        W4["人間からの回答を受け取り、コード・仕様書修正 & テスト検証を実行"]
+        RW1["worker-1: 担当範囲 1 を査読 → 指摘ファイル生成"]
+        RW2["..."]
+        RW3["worker-N: 担当範囲 N を査読 → 指摘ファイル生成"]
+    end
+
+    subgraph FixWorker ["修正用子エージェント (新規起動 / 専用Tab)"]
+        direction TB
+        FW1["/grill-me で修正方針の質問を出力"]
+        FW2["回答をもとにコード/仕様書修正 & テスト検証 & Status: Resolved 更新"]
     end
 
     U1 --> O1
     O1 --> O2
-    O2 -- "herdr agent prompt" --> W1
-    W1 --> O3
-    O3 -- "指摘あり" --> O4
-    O4 -- "herdr agent prompt /clear" --> W2
-    O5 -- "herdr agent prompt /grill-me" --> W3
-    W3 -- "質問出力" --> O6
-    O6 -- "ask_question" --> U2
-    U2 -- "回答" --> O6
-    O6 -- "herdr agent prompt <回答>" --> W4
-    W4 --> O7
-    O7 --> O8
-    O8 --> O9
-    O9 --> O2
-    O3 -- "指摘0件 (完了)" --> End(["完了報告して終了"])
+    O2 --> RW1 & RW2 & RW3
+    O3 --> RW1 & RW2 & RW3
+    RW1 & RW2 & RW3 -- "done" --> O3
+    O3 --> O4
+    O4 --> O5
+    O5 -- "指摘0件 (Passed)" --> End(["完了報告して終了"])
+    O5 -- "指摘あり (Open)" --> O6
+    O6 --> FW1
+    O7 --> FW1
+    FW1 -- "質問出力" --> O8
+    O8 -- "ask_question" --> U2
+    U2 -- "回答" --> O8
+    O8 -- "回答送信" --> FW2
+    FW2 -- "done" --> O9
+    O9 --> O10
+    O10 --> O1
 ```
 
 ---
 
 ## 📋 実行フロー
 
-### 1. レビュー対象の確認とブランチ名・ディレクトリの確定
+### 1. レビュー対象の確認・分割整理とディレクトリの確定
 
-1. ユーザーからの指示で指定されたレビュー対象（特定の仕様書・ファイル群、または「本ブランチの変更点」等）を確認します。
-2. `git branch --show-current` でブランチ名を取得し、スラッシュ等をハイフンに置換して `<sanitized-branch>` を確定します（例: `review-requirement-definition`）。
-3. 指摘ファイル保存先ディレクトリ `docs/review/<sanitized-branch>/` を確認・特定します。
+1. ユーザーからの指示で指定されたレビュー対象（複数の仕様書・ファイル群、本ブランチの変更点、または特定ファイル内の複数セクション/観点など）を確認します。
+2. **レビュー対象の分割整理**:
+   - **複数ファイルの場合**: ファイル単位またはディレクトリ/モジュール単位に分割します。
+   - **1ファイル内に複数のレビュー対象や観点がある場合**: 章・機能単位、または査読観点（例: データモデル/整合性観点、セキュリティ/バリデーション観点、API設計/エラーハンドリング観点など）ごとに分割します。
+   - **単一ファイル・単一対象の場合**: 分割数は 1（`worker-1` のみ）とします。
+3. `git branch --show-current` でブランチ名を取得し、スラッシュ等をハイフンに置換して `<sanitized-branch>` を確定します（例: `review-requirement-definition`）。
+4. 指摘ファイル保存先ディレクトリ `docs/review/<sanitized-branch>/` を確認・特定します。
 
 ---
 
-### 2. herdr 環境の確認および単一子エージェント (worker) の起動
+### 2. 分割数に応じた Tab 作成とレビュー用子エージェントの起動
 
-1. `herdr agent list` を実行し、現在生存中のエージェントを確認します。
-2. `worker` という名前のエージェントが存在しない場合は、以下の手順で別 Pane を1つ作成し、子エージェントを起動します：
+分割した $N$ 個のレビュー対象（`TARGETS`）に応じて、**1 worker につき 1 つの Tab を新規作成**し、作成された Tab のルートペインで子エージェント（`worker-1`, `worker-2`, ..., `worker-N`）を起動します。
 
 ```bash
-# 1. 右側に Pane を分割（フォーカスは親エージェントのまま維持）
-SPLIT_RES=$(herdr pane split --current --direction right --no-focus)
-WORKER_PANE=$(printf '%s\n' "$SPLIT_RES" | jq -r '.result.pane.pane_id')
+# 1. 分割したレビュー対象リスト（N個）を配列で定義
+TARGETS=(
+  "docs/spec/auth.md"
+  "docs/spec/billing.md"
+  "docs/spec/api.md"
+)
 
-# 2. worker エージェントを起動 (kind には agy または環境に応じたエージェントを指定)
-herdr agent start worker --kind agy --pane "$WORKER_PANE"
+# 2. 各対象ごとに Tab を作成し、worker-1..N を起動
+TAB_IDS=()
+
+for i in "${!TARGETS[@]}"; do
+  WORKER_ID="worker-$((i+1))"
+
+  # 1 worker につき 1 つの新規 Tab を作成（作業ディレクトリとラベルを指定、背景実行のため --no-focus）
+  CREATE_RES=$(herdr tab create --cwd "$PWD" --label "$WORKER_ID" --no-focus)
+
+  TAB_ID=$(printf '%s\n' "$CREATE_RES" | jq -r '.result.tab.tab_id')
+  PANE_ID=$(printf '%s\n' "$CREATE_RES" | jq -r '.result.root_pane.pane_id')
+
+  TAB_IDS+=("$TAB_ID")
+
+  # 作成された Tab の root_pane でエージェントを起動
+  herdr agent start "$WORKER_ID" --kind agy --pane "$PANE_ID"
+done
 ```
 
 > [!NOTE]
-> 既に `worker` エージェントが存在している場合は、新規作成をスキップして既存の `worker` を再利用します。
+> 作成した各 Tab ID 配列（`TAB_IDS`）は、レビュー完了後のクローズ処理のために保持しておきます。
 
 ---
 
-### 3. 子エージェントへのレビュー指示と完了待機
+### 3. 子エージェントへの並列レビュー指示と完了待機
 
-親エージェントから `worker` エージェントにプロンプトを送信し、レビューの完了を待機します：
+親エージェントから各子エージェントに対し、担当範囲を指定したプロンプトを非同期（`--wait` を付けない）で一斉送信し、並列査読を開始させた後、`herdr agent wait` で全ワーカーの完了を待機します。
+
+#### 3-1. 並列プロンプトの一斉送信
 
 ```bash
-# レビュー対象が特定ファイルの場合
-herdr agent prompt worker "/review /review-changes <target_file_or_dir>" --wait --until done --timeout 300000
+# 全 worker に非同期（--wait なし）でプロンプトを一斉投入
+for i in "${!TARGETS[@]}"; do
+  WORKER_ID="worker-$((i+1))"
+  TARGET="${TARGETS[$i]}"
+  herdr agent prompt "$WORKER_ID" "/review /review-changes $TARGET"
+done
 
-# レビュー対象がブランチ全体の変更の場合
-herdr agent prompt worker "/review /review-changes" --wait --until done --timeout 300000
+# プロンプト受付とワーカー起動開始のための短い待機
+sleep 2
 ```
 
-`--wait --until done` により、子エージェントが対象の査読および `docs/review/<sanitized-branch>/` 配下への指摘ファイル生成を完了して `done` 状態になるまで親エージェントは自動待機します。
+#### 3-2. 全子エージェントの完了待機
 
----
-
-### 4. 成果報告の確認と終了判定
-
-1. `worker` エージェントの実行結果、および `docs/review/<sanitized-branch>/` 配下の全 `.md` ファイルをスキャンします。
-2. ヘッダー付近に `- **Status**: Open` が含まれるファイルを抽出します。
-3. **`Status: Open` が 0件の場合（または `summary.md` で `Status: Passed` の場合）**:
-   - レビューで修正すべき指摘事項は見つかりませんでした。
-   - ユーザーに「すべてのレビューチェックを通過しました。修正が必要な指摘はありません。」と完了報告を行い、**処理を終了します**。
-4. **`Status: Open` が 1件以上存在する場合**:
-   - 次のステップ（Step 5）に進み、修正サイクルを開始します。
-
----
-
-### 5. 子エージェントの履歴クリア (`/clear`)
-
-レビュー時の長い会話履歴やコンテキストによるトークン消費・混乱を防ぐため、親エージェントから `worker` エージェントへ `/clear` を送信します：
+各子エージェントの完了状態を `herdr agent wait` コマンドで順次待機します。
+(`--until` は明示指定せずデフォルト動作を利用します。)
 
 ```bash
-herdr agent prompt worker "/clear" --wait --until done --timeout 30000
+# 全 worker の査読完了を順次待機 & ステータス確認
+for i in "${!TARGETS[@]}"; do
+  WORKER_ID="worker-$((i+1))"
+  # デフォルトで settled 状態（idle, done, blocked）を待機
+  herdr agent wait "$WORKER_ID" --timeout 300000
+
+  # 状態を確認し、blocked（ダイアログ/承認待ち）の場合は画面を確認
+  STATUS=$(herdr agent get "$WORKER_ID" | jq -r '.result.agent.status // empty')
+  if [ "$STATUS" = "blocked" ]; then
+    echo "Warning: $WORKER_ID is blocked. Inspecting output:"
+    herdr agent read "$WORKER_ID" --source recent-unwrapped --lines 30
+  fi
+done
+```
+
+これによって、すべての並列子エージェントがそれぞれの査読および `docs/review/<sanitized-branch>/` 配下への指摘ファイル生成を完了（または安定状態に到達）するまで親エージェントは自動待機します。
+
+---
+
+### 4. 成果報告の確認とレビュー用 Tab の全クローズ
+
+1. `docs/review/<sanitized-branch>/` 配下の全 `.md` ファイルをスキャンし、ヘッダー付近に `- **Status**: Open` が含まれるファイルを抽出・集約します。
+2. **レビュー用ワーカーの全 Tab をクローズしてリソース・履歴を解放します**：
+
+```bash
+# レビュー用ワーカーの全 Tab をクローズ
+for TAB_ID in "${TAB_IDS[@]}"; do
+  herdr tab close "$TAB_ID"
+done
+```
+
+3. **終了判定**:
+   - **`Status: Open` が 0件の場合**:
+     - ユーザーに「すべてのレビューチェックを通過しました。修正が必要な指摘はありません。」と完了報告を行い、**処理を終了します**。
+   - **`Status: Open` が 1件以上存在する場合**:
+     - 次のステップ（Step 5）に進み、修正サイクルを開始します。
+
+---
+
+### 5. 修正用 Tab の新規作成と修正用エージェントの起動
+
+修正適用フェーズ（Step 6）は並列化せず、全指摘間の整合性を保ちながら一貫して修正作業を進めるため、**新規に Tab を1つ作成し、単一の修正用エージェント（`worker`）を起動**します。
+
+```bash
+RES_FIX=$(herdr tab create --cwd "$PWD" --label "fix-worker" --no-focus)
+FIX_TAB=$(printf '%s\n' "$RES_FIX" | jq -r '.result.tab.tab_id')
+FIX_PANE=$(printf '%s\n' "$RES_FIX" | jq -r '.result.root_pane.pane_id')
+herdr agent start worker --kind agy --pane "$FIX_PANE"
 ```
 
 ---
 
 ### 6. apply-review-fixes の指示と対話型方針ヒアリング (`/grill-me` + `ask_question`)
 
-#### 6-1. 子エージェントへの一括修正指示
+#### 6-1. 修正用エージェントへの一括修正指示
 Step 4 で検出された**全オープン指摘ファイルをまとめて指定**し、`/grill-me /apply-review-fixes` を指示します：
 
 ```bash
@@ -140,11 +208,11 @@ PROMPT="/grill-me /apply-review-fixes
 ...
 上記の指摘内容をすべて確認し、修正方針を検討してください。修正方針に選択肢や確認事項がある場合は、具体的な質問と選択肢を提示してください。"
 
-herdr agent prompt worker "$PROMPT" --wait --until idle --timeout 300000
+herdr agent prompt worker "$PROMPT" --wait --timeout 300000
 ```
 
 #### 6-2. 子エージェントからの質問の読み取り
-子エージェントは `/grill-me` により方針に関する質問を出力して `idle` 状態になります。親エージェントはターミナル出力を読み取ります：
+子エージェントは `/grill-me` により方針に関する質問を出力して待機状態になります。親エージェントはターミナル出力を読み取ります：
 
 ```bash
 herdr agent read worker --source recent-unwrapped --lines 50
@@ -160,38 +228,33 @@ herdr agent read worker --source recent-unwrapped --lines 50
 ユーザーから返ってきた回答内容をそのまま `worker` エージェントへ送信します：
 
 ```bash
-herdr agent prompt worker "ユーザーからの回答: <ユーザーが選択・入力した回答テキスト>。この方針に従って修正作業（仕様書・コードの修正およびテスト検証）を進めてください。" --wait --until idle --timeout 600000
+herdr agent prompt worker "ユーザーからの回答: <ユーザーが選択・入力した回答テキスト>。この方針に従って修正作業（仕様書・コードの修正およびテスト検証）を進めてください。" --wait --timeout 600000
 ```
 
 ※子エージェントから更なる追加の質問が出力された場合は、同様に `ask_question` ツールを介してユーザーへ中継します。
 
 ---
 
-### 7. 修正・テスト検証の完了待機
+### 7. 修正・テスト検証の完了待機と修正用 Tab のクローズ
 
-`worker` エージェントが仕様書・コードの修正、回帰テストの実行、および問題ファイルのヘッダー更新（`- **Status**: Resolved`）と完了報告の追記を終え、`idle` または `done` になるまで待機します。
-
----
-
-### 8. 子エージェントの履歴クリア (`/clear`)
-
-修正作業が完了したら、次回のレビュー検証に向けて再度会話履歴をクリアします：
+1. `worker` エージェントが仕様書・コードの修正、回帰テストの実行、および問題ファイルのヘッダー更新（`- **Status**: Resolved`）と完了報告の追記を終え、`done`（または `idle`）になるまで待機します。
+2. 修正・検証の完了を確認後、**修正用 Tab をクローズして終了します**：
 
 ```bash
-herdr agent prompt worker "/clear" --wait --until idle --timeout 30000
+herdr tab close "$FIX_TAB"
 ```
 
 ---
 
-### 9. 再レビュー＆修正サイクルの反復（Iteration）
+### 8. 再レビュー＆修正サイクルの反復（Iteration）
 
-1. 修正結果を再検証するため、**Step 3 に戻ります**。
-2. 親エージェントが `worker` に `/review-changes` を再指示します。
-3. **Step 3 〜 Step 8 のサイクルを、Step 4 で `Status: Open` が完全に 0件になるまで繰り返します。**
+1. 修正結果を再検証するため、**Step 1 に戻ります**。
+2. レビュー対象を再度確認・分割し、新規にレビュー用 Tab / 子エージェントを起動して並列査読を実行します。
+3. **Step 1 〜 Step 7 のサイクルを、Step 4 で `Status: Open` が完全に 0件になるまで繰り返します。**
 
 ---
 
-### 10. 終了
+### 9. 終了
 
 レビューで指摘が 0件になった時点で、全体の修正履歴とレビュー通過結果をユーザーにまとめて報告し、ループを終了します。
 
@@ -199,9 +262,13 @@ herdr agent prompt worker "/clear" --wait --until idle --timeout 30000
 
 ## 🛠 トラブルシューティング
 
+- **子エージェントが `blocked`（承認・ダイアログ待ち）になった場合**:
+  `herdr agent read <target> --source recent-unwrapped` でプロンプトや質問内容を確認し、`herdr agent send-keys <target> enter` や `y`、または追加の `herdr agent prompt` で対応してください。
+- **Tab / Pane の終了漏れが発生した場合**:
+  `herdr tab list` で生存している不要な Tab を確認し、`herdr tab close <tab_id>` で明示的にクローズしてください。
 - **`agent_prompt_stalled` エラーが発生した場合**:
-  エージェントがプロンプトを受信しても 5秒以内に状態変化が観測されなかったことを示します。`herdr agent list` や `herdr agent read worker --source recent-unwrapped` で状態を確認し、必要に応じて `herdr agent send-keys worker enter` を送信して復帰させてください。
+  エージェントがプロンプトを受信しても 5秒以内に状態変化が観測されなかったことを示します。`herdr agent list` や `herdr agent read <target> --source recent-unwrapped` で状態を確認し、必要に応じて `herdr agent send-keys <target> enter` を送信して復帰させてください。
 - **子エージェントの応答が停止した場合**:
-  `herdr agent read worker --source recent-unwrapped` で最新ログを確認し、ダイアログ待ち等の場合は `herdr agent send-keys worker esc` や `enter` でレスキューします。
+  `herdr agent read <target> --source recent-unwrapped` で最新ログを確認し、ダイアログ待ち等の場合は `herdr agent send-keys <target> esc` や `enter` でレスキューします。
 - **タイムアウトが発生した場合**:
   大規模なテスト実行やレビュー処理では、`--timeout 600000`（10分）のようにタイムアウト時間を長めに設定してください。
