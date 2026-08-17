@@ -14,22 +14,23 @@
 | --- | --- | --- | --- | --- |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID | ✅ |
 | ユーザー名 | `USERNAME` | `VARCHAR(20)` / `NOT NULL` | 2〜20文字、英大小数字（同名登録可） | ✅ |
-| メールアドレス | `EMAIL` | `VARCHAR(255)` / `UNIQUE, NOT NULL` | 認証用メール（論理削除時は衝突回避のため退避形式へ更新） | ✅ |
+| メールアドレス | `EMAIL` | `VARCHAR(320)` / `UNIQUE, NOT NULL` | 認証用メール（登録・更新時に一律小文字へ正規化して保存。論理削除時は衝突回避のため退避形式へ更新） | ✅ |
 | パスワードハッシュ | `PASSWORD_HASH` | `VARCHAR(255)` / `NOT NULL` | ハッシュ化保存 | ✅ |
 | 削除フラグ (論理削除) | `IS_DELETED` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | アカウント削除時は論理削除 | ✅ |
 | アカウント削除日時 | `DELETED_AT` | `TIMESTAMPTZ` | 削除処理タイムスタンプ | ✅ |
 | ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 直近15分間に5回失敗で30分間ロック / 最後の失敗から15分経過またはログイン成功時に0にリセット | ✅ |
 | ログイン最終失敗日時 | `LOGIN_LAST_FAILED_AT` | `TIMESTAMPTZ` | 最終失敗タイムスタンプ | ✅ |
-| ロック解除日時 | `LOGIN_LOCK_UNTIL` | `TIMESTAMPTZ` | 5回失敗で初回失敗から30分間ロック | ✅ |
+| ロック解除日時 | `LOGIN_LOCK_UNTIL` | `TIMESTAMPTZ` | 5回連続失敗時にロックアウト発生時刻から30分後（NOW() + INTERVAL '30 minutes'）を設定。ロック中の追加試行では延長しない（固定30分） | ✅ |
 | 再認証失敗回数 | `REAUTH_FAILED_COUNT` | `INT` / `DEFAULT 0` | パスワード変更・アカウント削除時の再認証失敗回数。5回連続失敗でログインセッション物理削除（成功時またはセッション破棄時に0リセット） | ✅ |
 | 再認証最終失敗日時 | `REAUTH_LAST_FAILED_AT` | `TIMESTAMPTZ` | 再認証最終失敗タイムスタンプ | ✅ |
 | 作成日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
 | 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
 
 > [!NOTE]
-> **削除方針およびメールアドレス重複回避**
+> **削除方針およびメールアドレス重複回避・ログイン試行制御**
 > - **アカウント (`LOGIN_ACCOUNT`)**: 退会・アカウント削除時は論理削除 (`IS_DELETED = TRUE`, `DELETED_AT = NOW()`) を行います。
->   - 論理削除後の同メールアドレスでの再登録を可能とするため、論理削除実行時に `EMAIL` カラムの値を退避フォーマット（例: `deleted_<USER_ID>_<EMAIL>`）に更新し、有効なアカウント間でのみ一意性を維持します。
+>   - 論理削除後の同メールアドレスでの再登録を可能とするため、論理削除実行時に `EMAIL` カラムの値を退避フォーマット（例: `deleted_<USER_ID>_<EMAIL>`）に更新し、有効なアカウント間でのみ一意性を維持します（最大300文字超に対応するため `VARCHAR(320)` を確保）。
+>   - 論理削除されたアカウントの元メールアドレスでログイン試行された場合、`EMAIL` 検索では「該当アカウントなし（未登録）」と同一パスを通るため、論理削除の有無は外部に秘匿されます。未登録アドレスや退避済みアドレスへの連続試行に対しては、IPアドレス単位レートリミット（`LOGIN_IP_RATE_LIMIT`）によりブルートフォース攻撃から保護します。
 > - **タスク (`TASK`)**: アカウント論理削除に伴い、所有するタスクデータおよび関連データは即座にDBから物理削除されます。
 > - **セッション (`LOGIN_SESSION`, `OTP_SESSION`)**: ログアウト・アカウント削除時および期限切れ時は物理削除 (`DELETE`) されます。
 
@@ -79,7 +80,7 @@
 | 認証種別 | `PURPOSE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) | ✅ |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 既存ユーザー識別用（パスワードリセット・メール変更時。新規登録時はNULL） | ✅ |
 | 登録予定ユーザー名 | `PENDING_USERNAME` | `VARCHAR(20)` | アカウント作成時は登録予定値 | ✅ |
-| 登録予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` | メール変更時 / 新規作成時 | ✅ |
+| 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` / `NOT NULL` | 認証対象 / 変更予定メールアドレス（新規登録・メール変更・パスワードリセットにおける重複排除・排他制御に利用） | ✅ |
 | 登録予定パスワードハッシュ | `PENDING_PASSWORD_HASH` | `VARCHAR(255)` | メール変更時・パスワードリセット時はNULL | ✅ |
 | OTPハッシュ | `OTP_HASH` | `VARCHAR(255)` / `NOT NULL` | 8桁英数字（大文字小文字区別なし）のハッシュ | ✅ |
 | ステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL` | `active`, `verified`, `expired`, `locked`, `completed` | ✅ |
@@ -97,9 +98,28 @@
 
 ---
 
-## 5. ログ管理 (LOGS)
+## 5. ログインレートリミット管理 (LOGIN_IP_RATE_LIMIT)
 
-### 5.1 ログイン情報ログ (LOGIN_LOG)
+**Table Name**: `LOGIN_IP_RATE_LIMIT`
+
+パスワードスプレー攻撃等の防止を目的とした、IPアドレス単位のログイン失敗追跡およびアクセス一時遮断用テーブルです。
+
+| 項目名 | カラム名 | データ型 / 制約 | 備考 | 実装 |
+| --- | --- | --- | --- | --- |
+| IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `PRIMARY KEY` | 対象クライアントIPアドレス (IPv4 / IPv6) | ✅ |
+| 失敗回数 | `FAILED_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 直近5分間の累計失敗回数（リクエスト時に `LAST_FAILED_AT` から5分超過で0リセット） | ✅ |
+| 最終失敗日時 | `LAST_FAILED_AT` | `TIMESTAMPTZ` / `NOT NULL` | 最終失敗タイムスタンプ | ✅ |
+| 遮断解除日時 | `BLOCKED_UNTIL` | `TIMESTAMPTZ` | 30回到達時に `NOW() + INTERVAL '15 minutes'` を設定。この時刻まで該当IPからのログインを一律遮断 (HTTP 429) | ✅ |
+| 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | レコード更新日時 | ✅ |
+
+> [!NOTE]
+> **保持期間・パージ方針**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1日（24時間）以上経過した不要レコードは、日次Cronジョブ（毎日 03:00 JST / Cron: `0 3 * * *`）にて物理削除します。
+
+---
+
+## 6. ログ管理 (LOGS)
+
+### 6.1 ログイン情報ログ (LOGIN_LOG)
 
 **Table Name**: `LOGIN_LOG`
 
@@ -117,7 +137,7 @@
 
 ---
 
-### 5.2 DBアクセスログ (ACCESS_LOG)
+### 6.2 DBアクセスログ (ACCESS_LOG)
 
 **Table Name**: `ACCESS_LOG`
 
@@ -135,7 +155,7 @@
 
 ---
 
-### 5.3 メール認証ログ (MAIL_AUTH_LOG)
+### 6.3 メール認証ログ (MAIL_AUTH_LOG)
 
 **Table Name**: `MAIL_AUTH_LOG`
 
@@ -153,6 +173,54 @@
 
 > [!NOTE]
 > **保持期間・パージ方針**: 1年間（365日間）保持し、日次Cronジョブ（毎日 02:00 JST / Cron: `0 2 * * *`）にて経過レコードを物理削除します。
+
+---
+
+## 7. 推奨インデックス設計 (INDEXES)
+
+要件定義書の性能要件（ターンアラウンドタイム2秒以下）やバッチ・パージ処理を担保するための推奨インデックス定義です。
+
+### 7.1 タスク管理 (`TASK`)
+```sql
+-- タスク一覧の複合ソート高速化 (ユーザー別、ステータス別、ピン留め降順、締切日時昇順 NULLS LAST、作成日時降順)
+CREATE INDEX idx_task_user_status_sort ON TASK (USER_ID, STATUS, IS_PINNED DESC, DUE_DATE ASC NULLS LAST, CREATED_AT DESC);
+```
+
+### 7.2 セッション管理 (`LOGIN_SESSION`, `OTP_SESSION`)
+```sql
+-- ユーザーIDでのセッション照会・失効処理
+CREATE INDEX idx_login_session_user ON LOGIN_SESSION (USER_ID);
+
+-- 有効期限切れセッションの日次Cronパージ用
+CREATE INDEX idx_login_session_expires ON LOGIN_SESSION (EXPIRES_AT);
+
+-- OTPセッションのメールアドレス排他判定および有効セッション照会
+CREATE INDEX idx_otp_session_pending_email ON OTP_SESSION (PENDING_EMAIL, STATUS, EXPIRES_AT);
+
+-- OTPセッションの15分間隔Cronパージ用
+CREATE INDEX idx_otp_session_purge ON OTP_SESSION (EXPIRES_AT, MAX_EXPIRES_AT);
+```
+
+### 7.3 レートリミット管理 (`LOGIN_IP_RATE_LIMIT`)
+```sql
+-- レートリミットレコードのパージ用
+CREATE INDEX idx_login_ip_rate_limit_purge ON LOGIN_IP_RATE_LIMIT (BLOCKED_UNTIL, LAST_FAILED_AT);
+```
+
+### 7.4 ログテーブル (`LOGIN_LOG`, `ACCESS_LOG`, `MAIL_AUTH_LOG`)
+```sql
+-- ログインログのIP/メール別照会および日次パージ
+CREATE INDEX idx_login_log_ip ON LOGIN_LOG (IP_ADDRESS, CREATED_AT DESC);
+CREATE INDEX idx_login_log_email ON LOGIN_LOG (EMAIL, CREATED_AT DESC);
+CREATE INDEX idx_login_log_purge ON LOGIN_LOG (CREATED_AT);
+
+-- アクセスログのパージ用
+CREATE INDEX idx_access_log_purge ON ACCESS_LOG (CREATED_AT);
+
+-- メール認証ログのメール別照会およびパージ用
+CREATE INDEX idx_mail_auth_log_email ON MAIL_AUTH_LOG (EMAIL, CREATED_AT DESC);
+CREATE INDEX idx_mail_auth_log_purge ON MAIL_AUTH_LOG (CREATED_AT);
+```
 
 ---
 
