@@ -18,10 +18,10 @@
 | パスワードハッシュ | `PASSWORD_HASH` | `VARCHAR(255)` / `NOT NULL` | ハッシュ化保存 | ✅ |
 | 削除フラグ (論理削除) | `IS_DELETED` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | アカウント削除時は論理削除 | ✅ |
 | アカウント削除日時 | `DELETED_AT` | `TIMESTAMPTZ` | 削除処理タイムスタンプ | ✅ |
-| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 15分間のインターバルを挟まずに5回連続失敗で30分間ロック / 最後の失敗から15分経過またはログイン成功時に0にリセット | ✅ |
+| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 15分間のインターバルを挟まずに5回連続失敗で30分間ロック / 最後の失敗から15分経過またはログイン成功時に0にリセット | ✅ |
 | ログイン最終失敗日時 | `LOGIN_LAST_FAILED_AT` | `TIMESTAMPTZ` | 最終失敗タイムスタンプ | ✅ |
 | ロック解除日時 | `LOGIN_LOCK_UNTIL` | `TIMESTAMPTZ` | 5回連続失敗時にロックアウト発生時刻から30分後（NOW() + INTERVAL '30 minutes'）を設定。ロック中の追加試行では延長しない（固定30分） | ✅ |
-| 再認証失敗回数 | `REAUTH_FAILED_COUNT` | `INT` / `DEFAULT 0` | パスワード変更・アカウント削除時の再認証失敗回数。5回連続失敗でログインセッション物理削除（成功時またはセッション破棄時に0リセット） | ✅ |
+| 再認証失敗回数 | `REAUTH_FAILED_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | パスワード変更・アカウント削除時の再認証失敗回数。5回連続失敗でログインセッション物理削除（成功時またはセッション破棄時に0リセット） | ✅ |
 | 再認証最終失敗日時 | `REAUTH_LAST_FAILED_AT` | `TIMESTAMPTZ` | 再認証最終失敗タイムスタンプ | ✅ |
 | 作成日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
 | 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
@@ -43,7 +43,7 @@
 | 項目名 | カラム名 | データ型 / 制約 | 備考 | 実装 |
 | --- | --- | --- | --- | --- |
 | タスクID | `TASK_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID | ✅ |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 所有ユーザー | ✅ |
+| ユーザーID | `USER_ID` | `VARCHAR(36)` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 所有ユーザー | ✅ |
 | タスク名 | `TITLE` | `VARCHAR(255)` / `NOT NULL` | 1〜100文字（制御文字不可） | ✅ |
 | 優先度 | `PRIORITY` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'MEDIUM'` | `LOW` (低), `MEDIUM` (中・初期値), `HIGH` (高) | ✅ |
 | 締切日時 | `DUE_DATE` | `TIMESTAMPTZ` | 任意設定（未指定時は該当日 23:59 JST を適用） | ✅ |
@@ -62,7 +62,7 @@
 | 項目名 | カラム名 | データ型 / 制約 | 備考 | 実装 |
 | --- | --- | --- | --- | --- |
 | セッションID | `SESSION_ID` | `VARCHAR(64)` / `PRIMARY KEY` | ランダムトークン / Cookie保存 (`sync_task_sid`) | ✅ |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | ログインユーザーID | ✅ |
+| ユーザーID | `USER_ID` | `VARCHAR(36)` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | ログインユーザーID | ✅ |
 | 有効期限 | `EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 1ヶ月 (43200分) / APIアクセス時にSliding Expirationで自動延長 / 期限切れは日次Cron（00:00 JST）で物理削除 | ✅ |
 | IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` | アクセス元IP | ✅ |
 | User-Agent | `USER_AGENT` | `TEXT` | クライアント情報 | ✅ |
