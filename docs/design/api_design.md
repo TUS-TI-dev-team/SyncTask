@@ -676,9 +676,10 @@
   ]
 }
 ```
+※単一タスク作成時も `created_count: 1` および要素数1の `tasks` 配列を返却します。
 
 ##### Errors
-- `400 Bad Request`: バリデーション不正（文字数違反、期間・曜日不整合等）
+- `400 Bad Request`: タイトル文字数違反、期間・曜日不整合、生成件数超過（0件または101件以上）等
 - `401 Unauthorized`: 未ログイン
 - `403 Forbidden`: CSRFトークン不正
 
@@ -716,7 +717,7 @@
 ---
 
 #### 3.3.4 `PATCH tasks/{task_id}`
-タスク情報を部分更新します。リクエストボディに含まれるフィールドのみが更新対象となります。
+タスク情報を部分更新します。リクエストボディに含まれるフィールドのみが更新対象となります（ステータス変更 `status` やピン留め `is_pinned` の単体更新含む）。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
@@ -734,6 +735,18 @@
   "is_pinned": true
 }
 ```
+※ステータスのみを変更する場合は `{"status": "completed"}`、ピン留めのみを変更する場合は `{"is_pinned": true}` のように、更新対象のフィールドのみを指定して送信可能です。
+
+##### Request Body フィールド定義
+
+| フィールド | 型 | 必須 | 制約・バリデーション |
+| :--- | :--- | :---: | :--- |
+| `title` | string | × | 1〜100文字（トリム後）。改行等の制御文字禁止 |
+| `comment` | string | × | 0〜1000文字（トリム後）。改行は `\n` に正規化 |
+| `priority` | string | × | `high`, `medium`, `low` |
+| `status` | string | × | `not_started`, `in_progress`, `completed` |
+| `due_datetime` | string / null | × | ISO 8601 日時文字列（`null` 指定で締切解除） |
+| `is_pinned` | boolean | × | ピン留め状態（`true` / `false`） |
 
 ##### Response (200 OK)
 ```json
@@ -757,59 +770,29 @@
 - `400 Bad Request`: バリデーション不正（文字数違反、ステータス不正値等）
 - `401 Unauthorized`: 未ログイン
 - `403 Forbidden`: CSRFトークン不正
-  "username": "newUsername"
-}
-```
-
-| フィールド | 型 | 必須 | 制約・バリデーション |
-| :--- | :--- | :---: | :--- |
-| `username` | string | ○ | 2〜20文字、英数字。現在のユーザー名と同一の場合は 422 エラー |
-
-##### Response (200 OK)
-```json
-{
-  "user": {
-    "id": "usr_987654321",
-    "username": "newUsername",
-    "email": "user@example.com"
-  }
-}
-```
-
-##### Errors
-- `400 Bad Request`: ユーザー名要件違反（文字数・使用可能文字不正）
-- `422 Unprocessable Entity`: 現在のユーザー名と同一（`"code": "SAME_AS_CURRENT_USERNAME"`）
-- `404 Not Found`: 認可エラー
+- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク）
 
 ---
 
-#### 3.2.3 `DELETE users/{user_id}`
-パスワード再認証を行い、アカウントを論理削除（`IS_DELETED=true`）します。所有タスクデータおよび全セッションは物理削除されます。
+#### 3.3.5 `DELETE tasks/{task_id}`
+タスクをDBから物理削除します。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
 - **Path Parameters**:
-  - `user_id` (string): 対象ユーザーID（セッションと一致必須）
-
-##### Request Body
-```json
-{
-  "password": "Password123!"
-}
-```
+  - `task_id` (string): 削除対象タスクID
 
 ##### Response (200 OK)
-- **Set-Cookie**: `sync_task_sid=; Max-Age=0`
-
 ```json
 {
-  "message": "Account has been deleted successfully."
+  "message": "Task has been deleted successfully."
 }
 ```
 
 ##### Errors
-- `400 Bad Request`: パスワード再認証失敗（5回連続失敗時はセッション強制破棄・401 Unauthorized）
-- `404 Not Found`: 認可エラー
+- `401 Unauthorized`: 未ログイン
+- `403 Forbidden`: CSRFトークン不正
+- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク）
 
 ---
 
