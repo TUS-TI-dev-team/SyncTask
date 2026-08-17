@@ -18,7 +18,7 @@
 | パスワードハッシュ | `PASSWORD_HASH` | `VARCHAR(255)` / `NOT NULL` | ハッシュ化保存 | ✅ |
 | 削除フラグ (論理削除) | `IS_DELETED` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | アカウント削除時は論理削除 | ✅ |
 | アカウント削除日時 | `DELETED_AT` | `TIMESTAMPTZ` | 削除処理タイムスタンプ | ✅ |
-| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 直近15分間に5回失敗で30分間ロック / 最後の失敗から15分経過またはログイン成功時に0にリセット | ✅ |
+| ログイン失敗回数 | `LOGIN_FAILED_COUNT` | `INT` / `DEFAULT 0` | 15分間のインターバルを挟まずに5回連続失敗で30分間ロック / 最後の失敗から15分経過またはログイン成功時に0にリセット | ✅ |
 | ログイン最終失敗日時 | `LOGIN_LAST_FAILED_AT` | `TIMESTAMPTZ` | 最終失敗タイムスタンプ | ✅ |
 | ロック解除日時 | `LOGIN_LOCK_UNTIL` | `TIMESTAMPTZ` | 5回連続失敗時にロックアウト発生時刻から30分後（NOW() + INTERVAL '30 minutes'）を設定。ロック中の追加試行では延長しない（固定30分） | ✅ |
 | 再認証失敗回数 | `REAUTH_FAILED_COUNT` | `INT` / `DEFAULT 0` | パスワード変更・アカウント削除時の再認証失敗回数。5回連続失敗でログインセッション物理削除（成功時またはセッション破棄時に0リセット） | ✅ |
