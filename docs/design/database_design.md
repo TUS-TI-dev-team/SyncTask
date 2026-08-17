@@ -83,7 +83,7 @@
 | 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(320)` / `NOT NULL` | 認証対象 / 変更予定メールアドレス（登録・更新・認証要求時に一律小文字 `toLowerCase()` へ正規化して保存。新規登録・メール変更・パスワードリセットにおける重複排除・排他制御に利用） | ✅ |
 | 登録予定パスワードハッシュ | `PENDING_PASSWORD_HASH` | `VARCHAR(255)` | メール変更時・パスワードリセット時はNULL | ✅ |
 | OTPハッシュ | `OTP_HASH` | `VARCHAR(255)` / `NOT NULL` | 8桁英数字（大文字小文字区別なし）のハッシュ | ✅ |
-| ステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL` | `active`, `verified`, `expired`, `locked`, `completed` | ✅ |
+| ステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL` | `active`, `verified`, `expired`, `completed` | ✅ |
 | 試行失敗回数 | `ATTEMPT_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 1つのOTPに対して最大5回（5回失敗時は自動再送・失効制御） | ✅ |
 | 再送回数 | `SEND_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 手動/自動再送回数 | ✅ |
 | 直前送信日時 | `LAST_SENT_AT` | `TIMESTAMPTZ` / `NOT NULL` | 直前の送信タイムスタンプ（60秒クールダウン判定用） | ✅ |
@@ -94,7 +94,7 @@
 > [!NOTE]
 > **OTPセッションのパージ方針**
 > - 新パスワード設定完了時やアカウント作成確定時等に直ちにDBから物理削除されます。
-> - 有効期限切れ（全体最大有効期限 `MAX_EXPIRES_AT` 経過、またはステータスが `expired`, `locked`, `completed` かつ `EXPIRES_AT` 経過）のレコードは、Cronジョブ（15分ごと / Cron: `*/15 * * * *` JST）にてDBから一括物理削除されます。
+> - 有効期限切れ（全体最大有効期限 `MAX_EXPIRES_AT` 経過、またはステータスが `expired`, `completed` かつ `EXPIRES_AT` 経過）のレコードは、Cronジョブ（15分ごと / Cron: `*/15 * * * *` JST）にてDBから一括物理削除されます。
 
 ---
 
