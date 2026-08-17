@@ -62,7 +62,7 @@ WHERE <primary_key> IN (SELECT <primary_key> FROM target_rows);
 ## 3. ジョブ詳細仕様
 
 ### 3-1. OTP セッションクリーンアップ (`CLEANUP_OTP_SESSIONS`)
-- **目的**: 全体最大有効期限（15分）が経過したレコード、または明示的に無効化・失効済み（`STATUS IN ('expired', 'locked', 'completed')`）かつ単発有効期限（5分）が過ぎた `OTP_SESSION` テーブルの不要レコードを削除し、DB 領域をクリーンに保つ。
+- **目的**: 全体最大有効期限（15分）が経過したレコード、または明示的に無効化・失効済み（`STATUS IN ('expired', 'completed')`）かつ単発有効期限（5分）が過ぎた `OTP_SESSION` テーブルの不要レコードを削除し、DB 領域をクリーンに保つ。
 - **実行頻度**: 15分ごと (`*/15 * * * *` JST)
 - **クリーンアップ SQL**:
 ```sql
@@ -70,7 +70,7 @@ WITH target_rows AS (
     SELECT OTP_SESSION_ID
     FROM OTP_SESSION
     WHERE MAX_EXPIRES_AT < NOW()
-       OR (STATUS IN ('expired', 'locked', 'completed') AND EXPIRES_AT < NOW())
+       OR (STATUS IN ('expired', 'completed') AND EXPIRES_AT < NOW())
     LIMIT :batch_size
 )
 DELETE FROM OTP_SESSION
