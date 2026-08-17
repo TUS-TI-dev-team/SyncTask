@@ -9,17 +9,23 @@
 
 | パラメータ名 | 型 | 必須 | デフォルト | 説明 |
 | :--- | :--- | :---: | :--- | :--- |
-| `page` | integer | × | `1` | ページ番号（1始まり） |
-| `limit` | integer | × | `20` | 1ページあたりの取得件数（最大100件） |
-| `view_type` | string | × | - | ビュー指定: `high_priority`（優先高）, `near_deadline`（72時間以内/期限超過）, `pinned`（ピン留めのみ） |
-| `include_completed`| boolean | × | `false` | 完了タスクを含めるか（`true` / `false`） |
-| `keyword` | string | × | - | タスク名およびコメントの部分一致検索（Case-Insensitive、トリム処理） |
-| `priority` | string | × | - | 優先度絞り込み: `high`, `medium`, `low` |
-| `status` | string | × | - | ステータス絞り込み: `not_started`, `in_progress`, `completed` |
-| `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。指定日 23:59:59 までのタスクを検索） |
-| `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`） |
-| `end_date` | string | × | - | カレンダー表示用: グリッド取得終了日（`YYYY-MM-DD`） |
-| `sort_by` | string | × | `default` | ソート種別（`default`: ピン留め優先→締切昇順→作成日時降順） |
+| `page` | integer | × | `1` | ページ番号（1始まり。1以上の整数必須。1未満の数値または非数値指定時は 400 Bad Request） |
+| `limit` | integer | × | `20` | 1ページあたりの取得件数（1以上100以下の整数必須。1未満・100超過の数値または非数値指定時は 400 Bad Request） |
+| `view_type` | string | × | - | ビュー指定: `high_priority`（優先高）, `near_deadline`（72時間以内/期限超過。`include_completed` の指定に関わらず常に完了タスクは除外。※`status=completed` との同時指定はパラメータ競合として 400 Bad Request）, `pinned`（ピン留めのみ）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
+| `include_completed`| boolean | × | 通常: `false`<br>カレンダー: `true` | 完了タスクを含めるか（`true` / `false`）。`true` または `false` 以外の文字列・数値が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却。通常一覧時はデフォルト `false`、`start_date` / `end_date` 指定（カレンダー表示）時はデフォルト `true`。なお `status` が明示指定された場合は本パラメータは無視されます |
+| `keyword` | string | × | - | タスク名およびコメントの部分一致検索（Case-Insensitive、前後の空白文字（半角・全角スペース、タブ、改行）をトリム処理。トリム後のキーワードが100文字を超える場合は 400 Bad Request（code: `"BAD_REQUEST"`）。SQLワイルドカード特殊文字 % や _ や \ はリテラルエスケープして部分一致を検索。未入力またはトリム後空文字の場合はキーワードによる絞り込みを行わない） |
+| `priority` | string | × | - | 優先度絞り込み: `high`, `medium`, `low`。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
+| `status` | string | × | - | ステータス絞り込み: `not_started`, `in_progress`, `completed`。明示指定時は `include_completed` の指定を無視して指定ステータスを最優先適用（※`view_type=near_deadline` との同時指定は 400 Bad Request）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
+| `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。指定日当日の `00:00:00+09:00 <= due_datetime <= 23:59:59+09:00` の全タスク、および指定日より過去 `due_datetime < 00:00:00+09:00` の未完了タスク（`status != 'completed'`）を抽出対象とし、過去の完了済みタスクは常に除外。締切日時未設定 `null` のタスクは除外。未指定時は絞り込みを行わない。※`start_date` / `end_date` との同時指定は不可） |
+| `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`）。`end_date` とペアで指定必須。指定時はページネーション limit を解除し期間内の全タスクを返却。最大許容期間幅は 42日間（6週間）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
+| `end_date` | string | × | - | カレンダー表示用: グリッド取得終了日（`YYYY-MM-DD`）。`start_date` とペアで指定必須（`start_date <= end_date`）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
+| `sort_by` | string | × | `default` | ソート種別。指定可能値: `default`（ピン留め優先→締切昇順→作成日時降順）、`due_date_asc`（締切昇順）、`due_date_desc`（締切降順）、`created_at_desc`（作成日時降順）、`priority_desc`（優先度降順: `high` → `medium` → `low`）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`）。※`due_date_asc` および `due_date_desc` 指定時、締切日時未設定（`null`）のタスクは常に末尾に配置されます（`NULLS LAST`）。なお、すべてのソート指定において第一ソート条件で同一値となるタスクについては、確定的なページネーション順序を保証するためタイブレーク条件として `created_at DESC` → `id DESC` が適用されます。なお `view_type` 指定時に `sort_by` が明示的に指定された場合は、指定された `sort_by` のソート条件が最優先で適用されます（`sort_by` 省略時は `view_type` ごとのデフォルトソートが適用されます）。 |
+
+##### リクエスト評価順序
+1. **認証検証 (`401 Unauthorized`)**:
+   ログインセッションの有効性を確認（未ログインまたはセッション無効時は 401 `UNAUTHORIZED`）。
+2. **リクエスト構文・クエリパラメータバリデーション (`400 Bad Request`)**:
+   クエリパラメータの型・形式（`page < 1` または非整数、`limit < 1` または `limit > 100` または非整数、`include_completed` への非 boolean 指定、`keyword` トリム後100文字超過、`priority`, `status`, `view_type`, `sort_by` パラメータへの定義外の無効な値指定、`view_type=near_deadline` と `status=completed` の同時指定、日付フォーマット `YYYY-MM-DD` 違反、`start_date` / `end_date` 片側のみ指定、`start_date` / `end_date` と `due_date` の同時指定、`start_date > end_date`、期間幅42日超過等）を検証。不備がある場合は 400 `BAD_REQUEST` を返却。
 
 ##### Response (200 OK)
 ```json
@@ -47,9 +53,39 @@
 }
 ```
 
+##### Response Body フィールド定義
+
+| フィールド | 型 | 必須 | 説明 |
+| :--- | :--- | :---: | :--- |
+| `items` | array[object] | ○ | タスクオブジェクトの配列（検索・絞り込みに該当するタスクが0件の場合は空配列 `[]`） |
+| `items[].id` | string | ○ | タスクID（例: `tsk_1001`） |
+| `items[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `items[].title` | string | ○ | タスクタイトル |
+| `items[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
+| `items[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
+| `items[].status` | string | ○ | ステータス（`not_started`, `in_progress`, `completed`） |
+| `items[].due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
+| `items[].is_pinned` | boolean | ○ | ピン留めフラグ |
+| `items[].created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
+| `items[].updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
+| `pagination` | object | ○ | ページネーション情報 |
+| `pagination.page` | integer | ○ | 現在のページ番号（1始まり） |
+| `pagination.limit` | integer | ○ | 1ページあたりの取得件数 |
+| `pagination.total_count` | integer | ○ | 検索・絞り込みに該当する総タスク件数 |
+| `pagination.total_pages` | integer | ○ | 全総ページ数 |
+
+※締切日時が未設定のタスクの場合、`due_datetime` は `null` として返却されます。またコメントが未入力の場合、`comment` は空文字 `""` として返却されます。
+※通常一覧取得において、検索条件に合致する該当タスクが 0件（`total_count: 0`）の場合、`pagination` は `{"page": 1, "limit": <指定limit値>, "total_count": 0, "total_pages": 0}` として返却されます。
+※ `sort_by` 省略時に `view_type` ごとに適用されるデフォルトソート順序は以下の通りです：
+- `high_priority`: 締切日時昇順（`due_datetime ASC NULLS LAST`） → 作成日時降順（`created_at DESC`）※ピン留めによる並び替えは行いません
+- `near_deadline`: 締切日時昇順（`due_datetime ASC`） → 作成日時降順（`created_at DESC`）
+- `pinned`: 締切日時昇順（`due_datetime ASC NULLS LAST`） → 作成日時降順（`created_at DESC`）
+
+※ `start_date` / `end_date` を指定したカレンダー期間取得時は、`due_datetime` が設定されているタスクのうち `start_date 00:00:00+09:00 <= due_datetime <= end_date 23:59:59+09:00` の範囲に該当するタスクのみが抽出返却されます（`due_datetime` が `null` のタスクは除外されます）。なお、`due_date` パラメータとの同時指定は不可となり、同時に指定された場合は 400 `BAD_REQUEST` を返却します。`start_date` / `end_date` 指定時に `view_type`, `priority`, `status`, `keyword` 等の絞り込みパラメータが併用された場合は、指定された期間内で該当する絞り込み条件を満たすタスクのみが一括返却されます。また、ページネーションが無効化されて期間内の全タスクが一括返却されるため、`pagination` オブジェクトは `page: 1`, `limit: total_count`（取得件数と同値）, `total_pages: 1` として返却されます（該当タスクが0件の場合は `limit: 0, total_count: 0, total_pages: 1`）。※ `start_date` / `end_date` 指定（カレンダー期間取得）時に `sort_by` が省略された場合のデフォルトソート順序は、`is_pinned DESC`（ピン留め優先） → `due_datetime ASC`（締切日時昇順） → `created_at DESC`（作成日時降順） → `id DESC`（タイブレーク）となります。
+
 ##### Errors
-- `400 Bad Request`: クエリパラメータ不正（日付フォーマット違反、limit超過等）
-- `401 Unauthorized`: 未ログイン
+- `400 Bad Request`: クエリパラメータ不正（page/limitの範囲・型違反、include_completedの非boolean指定、priority/status/view_type/sort_byの不正値指定、view_type=near_deadlineとstatus=completedの同時指定、日付フォーマット違反、start_date/end_dateとdue_dateの同時指定、片側期間指定、start_date > end_date、期間幅超過(42日超)等、code: `"BAD_REQUEST"`）
+- `401 Unauthorized`: 未ログインまたはセッション無効（code: `"UNAUTHORIZED"`）
 
 ---
 
@@ -58,6 +94,12 @@
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
+
+##### リクエスト評価順序
+1. **認証・CSRF検証 (`401 Unauthorized` / `403 Forbidden`)**:
+   ログインセッションの有効性を確認（未ログイン時は 401 `UNAUTHORIZED`）、および `X-CSRF-Token` ヘッダーを検証（欠落・不一致時は 403 `FORBIDDEN`）。
+2. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
+   リクエストボディの JSON 形式、必須パラメータ（`title` 等）の有無、`title` 文字数・制御文字制約、`priority` への `null` や定義外列挙値（`high`, `medium`, `low` 以外）指定有無、`is_pinned` への `null` や非 boolean 型（数値・文字列等）指定有無、`recurring_rule` の各フィールド値・形式・期間制約（生成件数1〜100件範囲内）等を検証。不備時は 400 `BAD_REQUEST` を返却。
 
 ##### Request Body (1: 単一タスク作成時)
 ```json
@@ -89,18 +131,19 @@
 
 | フィールド | 型 | 必須 | 制約・バリデーション |
 | :--- | :--- | :---: | :--- |
-| `title` | string | ○ | 1〜100文字（トリム後）。改行・タブ等の制御文字禁止 |
-| `comment` | string | × | 0〜1000文字（トリム後）。改行は `\n` に正規化 |
-| `priority` | string | × | `high`, `medium`, `low`（デフォルト: `medium`） |
-| `due_datetime` | string | × | ISO 8601 日時文字列。単一作成時用（省略時は当日 `23:59:00+09:00`）。※`is_recurring: true` 時は指定されていても無視されます |
+| `title` | string | ○ | 前後の空白文字（半角・全角スペース、タブ、改行）を除去（トリム）した上で1〜100文字必須。空白文字のみの入力および文字列内部への改行・タブ等の制御文字入力は 400 Bad Request（code: `"BAD_REQUEST"`）として拒否 |
+| `comment` | string / null | × | 0〜1000文字（トリム後）。改行は `\n` に正規化。未入力時は空文字 `""` として登録 |
+| `priority` | string | × | `high`, `medium`, `low`（デフォルト: `medium`）。明示的に `null` または定義外の列挙値（`high`, `medium`, `low` 以外）が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却 |
+| `due_datetime` | string / null | × | ISO 8601 日時文字列（例: `2026-08-20T23:59:00+09:00`）、または日付のみ `YYYY-MM-DD`（時刻省略時は `23:59:00+09:00` を設定）。※タイムゾーンオフセットを含まない ISO 8601 文字列が指定された場合はデフォルトで JST (`+09:00`) と解釈し、UTC (`Z`) や他タイムゾーン指定時は JST (`+09:00`) に変換・正規化して登録・返却します。省略時または `null` 指定時は締切日時未設定（`null`）として作成。※`is_recurring: true` 時は無視されます |
+| `is_pinned` | boolean | × | ピン留めフラグ（`true` / `false`）。省略時はデフォルト `false` として作成。明示的に `null` または非 boolean 型（数値・文字列等）が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却 |
 | `is_recurring` | boolean | × | 繰り返し一括作成フラグ（デフォルト: `false`） |
 | `recurring_rule` | object | △ | `is_recurring: true` 時のみ必須（`false` 時は無視） |
-| `recurring_rule.start_date` | string | ○ | 開始日（`YYYY-MM-DD`）。`start_date <= end_date` |
+| `recurring_rule.start_date` | string | ○ | 開始日（`YYYY-MM-DD`）。`start_date <= end_date`。なお、業務要件に基づき `start_date` には過去日付の指定も可能であり、`start_date <= end_date` かつ期間が1年以内（生成件数1〜100件）の条件を満たしていれば、過去日に該当するタスクも正常に一括生成されます |
 | `recurring_rule.end_date` | string | ○ | 終了日（`YYYY-MM-DD`）。最大1年間（52週以内） |
-| `recurring_rule.days_of_week` | array[string] | ○ | `["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]` より1つ以上選択 |
-| `recurring_rule.due_time` | string | × | 締切時刻 `HH:mm`（省略時は `23:59`） |
+| `recurring_rule.days_of_week` | array[string] | ○ | 1つ以上の要素が必須（空配列 `[]` 不可）。`["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]` より選択。文字列は小文字へ正規化され重複はデデュプリケーション処理 |
+| `recurring_rule.due_time` | string | × | 締切時刻 24時間表記の `HH:mm`（`00:00`〜`23:59`、省略時は `23:59`）。`HH:mm` 形式でない場合、または `00:00`〜`23:59` の範囲外の数値や秒数を含む形式が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却 |
 
-※`is_recurring: true` の場合、生成件数が1〜100件の範囲内で即時一括生成されます（0件または101件以上の場合はエラーとなり作成されません）。
+※`is_recurring: true` の場合、生成件数が1〜100件の範囲内で即時一括生成されます（0件または101件以上の場合はエラーとなり作成されません）。繰り返し一括生成される各タスクの `due_datetime` には、該当日に `due_time`（省略時は `23:59`）と JST オフセット `+09:00` が結合された ISO 8601 日時文字列（例: `"2026-08-22T18:00:00+09:00"`）が自動的に設定されて登録・返却されます。なお、`is_recurring: true` 時に `is_pinned` フィールドが指定された場合、一括生成されるすべてのタスクにそのピン留め設定が適用されます。
 
 ##### Response (201 Created)
 ```json
@@ -122,12 +165,36 @@
   ]
 }
 ```
-※単一タスク作成時も `created_count: 1` および要素数1の `tasks` 配列を返却します。
+
+##### Response Body フィールド定義
+
+| フィールド | 型 | 必須 | 説明 |
+| :--- | :--- | :---: | :--- |
+| `created_count` | integer | ○ | 作成されたタスク件数（単一作成時は `1`、繰り返し一括作成時は作成数） |
+| `tasks` | array[object] | ○ | 作成されたタスクオブジェクトの配列 |
+| `tasks[].id` | string | ○ | タスクID（例: `tsk_2001`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `tasks[].title` | string | ○ | タスクタイトル |
+| `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
+| `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
+| `tasks[].status` | string | ○ | ステータス（初期値: `not_started`） |
+| `tasks[].due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
+| `tasks[].is_pinned` | boolean | ○ | ピン留めフラグ |
+| `tasks[].created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
+| `tasks[].updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
+
+※単一タスク作成時も `created_count: 1` および要素数1の `tasks` 配列を返却します。繰り返し一括生成時に返却される `tasks` 配列は `due_datetime` の昇順（時系列順）でソートされて返却されます。
 
 ##### Errors
-- `400 Bad Request`: タイトル文字数違反、期間・曜日不整合、生成件数超過（0件または101件以上）等
-- `401 Unauthorized`: 未ログイン
-- `403 Forbidden`: CSRFトークン不正
+- `400 Bad Request`: リクエスト形式またはバリデーション不正（code: `"BAD_REQUEST"`）
+  - `is_recurring: true` 時の `recurring_rule` 欠落・null・非オブジェクト指定時: `error.details: [{ "field": "recurring_rule", "message": "is_recurringがtrueの場合、recurring_ruleオブジェクトの指定は必須です" }]`
+  - 生成件数0件時: `error.details: [{ "field": "recurring_rule", "message": "指定された期間内に該当する曜日が存在しません" }]`
+  - 生成件数100件超過時: `error.details: [{ "field": "recurring_rule", "message": "生成件数が上限（100件）を超えています" }]`
+  - `due_time` 形式不正時: `error.details: [{ "field": "recurring_rule.due_time", "message": "締切時刻の形式が不正です（HH:mm形式で指定してください）" }]`
+  - タイトル文字数違反、日付範囲不整合（`start_date > end_date` または 1年超）、無効な曜日指定、`priority` への `null` / 定義外列挙値指定、`is_pinned` への `null` / 非 boolean 指定等
+  - ※ `recurring_rule` オブジェクト内のネストされた個別フィールドでバリデーションエラーが発生した場合（例: `start_date`, `end_date`, `days_of_week`, `due_time`）、`error.details[].field` にはドット記法（例: `"recurring_rule.start_date"`, `"recurring_rule.due_time"`, `"recurring_rule.days_of_week"` 等）で該当キー名が設定されます。
+- `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
+- `403 Forbidden`: CSRFトークン不正（code: `"FORBIDDEN"`）
 
 ---
 
@@ -137,6 +204,12 @@
 - **認証**: 必須（Cookie）
 - **Path Parameters**:
   - `task_id` (string): タスクID
+
+##### リクエスト評価順序
+1. **認証検証 (`401 Unauthorized`)**:
+   ログインセッションの有効性を確認（未ログイン時は 401 `UNAUTHORIZED`）。
+2. **認可チェック・IDOR/BOLA検証 (`404 Not Found`)**:
+   パスパラメータ `task_id` の存在およびセッションユーザーの所有タスクかを検証（不一致または存在しない場合は 404 `NOT_FOUND`）。
 
 ##### Response (200 OK)
 ```json
@@ -156,9 +229,27 @@
 }
 ```
 
+##### Response Body フィールド定義
+
+| フィールド | 型 | 必須 | 説明 |
+| :--- | :--- | :---: | :--- |
+| `task` | object | ○ | 詳細取得されたタスクオブジェクト |
+| `task.id` | string | ○ | タスクID（例: `tsk_1001`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `task.title` | string | ○ | タスクタイトル |
+| `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
+| `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
+| `task.status` | string | ○ | ステータス（`not_started`, `in_progress`, `completed`） |
+| `task.due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
+| `task.is_pinned` | boolean | ○ | ピン留めフラグ |
+| `task.created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
+| `task.updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
+
+※締切日時が未設定のタスクの場合、`due_datetime` は `null` として返却されます。またコメントが未入力の場合、`comment` は空文字 `""` として返却されます。
+
 ##### Errors
-- `401 Unauthorized`: 未ログイン
-- `404 Not Found`: 存在しないタスクまたは他ユーザー所有タスク
+- `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
+- `404 Not Found`: 存在しないタスクまたは他ユーザー所有タスク（code: `"NOT_FOUND"`）
 
 ---
 
@@ -169,6 +260,14 @@
 - **Headers**: `X-CSRF-Token: <token>`
 - **Path Parameters**:
   - `task_id` (string): 更新対象タスクID
+
+##### リクエスト評価順序
+1. **認証・CSRF検証 (`401 Unauthorized` / `403 Forbidden`)**:
+   ログインセッションの有効性を確認（未ログイン時は 401 `UNAUTHORIZED`）、および `X-CSRF-Token` ヘッダーを検証（欠落・不一致時は 403 `FORBIDDEN`）。
+2. **認可チェック・IDOR/BOLA検証 (`404 Not Found`)**:
+   パスパラメータ `task_id` の存在およびセッションユーザーの所有タスクかを検証（不一致または存在しない場合は 404 `NOT_FOUND`）。
+3. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
+   リクエストボディの JSON 形式、非 Null 許容フィールド（`title`, `priority`, `status`, `is_pinned`）への `null` 指定有無、文字数・列挙値制約を検証。不備がある場合は 400 `BAD_REQUEST` を返却。なお、システムの読み取り専用フィールド（`id`, `user_id`, `created_at`, `updated_at`）が含まれている場合は、エラーとせず更新対象外として単に無視します。
 
 ##### Request Body
 ```json
@@ -181,17 +280,17 @@
   "is_pinned": true
 }
 ```
-※ステータスのみを変更する場合は `{"status": "completed"}`、ピン留めのみを変更する場合は `{"is_pinned": true}` のように、更新対象のフィールドのみを指定して送信可能です。
+※ステータスのみを変更する場合は `{"status": "completed"}`、ピン留めのみを変更する場合は `{"is_pinned": true}` のように、更新対象のフィールドのみを指定して送信可能です。なお、更新対象フィールドが一つも指定されていない空リクエストボディ `{}` が送信された場合、変更を行わずに `200 OK` と現在のタスク情報を返却します。また、非 Null 許容フィールド（`title`, `priority`, `status`, `is_pinned`）に対して明示的に `null`（例: `{"title": null}`, `{"status": null}`）が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却します。リクエストボディに読み取り専用フィールド（`id`, `user_id`, `created_at`, `updated_at`）が含まれる場合は更新対象外として無視されます。
 
 ##### Request Body フィールド定義
 
 | フィールド | 型 | 必須 | 制約・バリデーション |
 | :--- | :--- | :---: | :--- |
-| `title` | string | × | 1〜100文字（トリム後）。改行等の制御文字禁止 |
-| `comment` | string | × | 0〜1000文字（トリム後）。改行は `\n` に正規化 |
+| `title` | string | × | 前後の空白文字（半角・全角スペース、タブ、改行）を除去（トリム）した上で1〜100文字必須。空白文字のみの入力および文字列内部への改行・タブ等の制御文字入力は 400 Bad Request（code: `"BAD_REQUEST"`）として拒否 |
+| `comment` | string / null | × | 0〜1000文字（トリム後）。改行は `\n` に正規化。空文字 `""` または `null` 指定でコメントをクリア（削除） |
 | `priority` | string | × | `high`, `medium`, `low` |
 | `status` | string | × | `not_started`, `in_progress`, `completed` |
-| `due_datetime` | string / null | × | ISO 8601 日時文字列（`null` 指定で締切解除） |
+| `due_datetime` | string / null | × | ISO 8601 日時文字列、または日付のみ `YYYY-MM-DD`（時刻省略時は `23:59:00+09:00` を設定。※タイムゾーンオフセットを含まない ISO 8601 文字列が指定された場合はデフォルトで JST (`+09:00`) と解釈し、UTC (`Z`) や他タイムゾーン指定時は JST (`+09:00`) に変換・正規化して登録・返却。`null` 指定で締切解除） |
 | `is_pinned` | boolean | × | ピン留め状態（`true` / `false`） |
 
 ##### Response (200 OK)
@@ -212,11 +311,27 @@
 }
 ```
 
+##### Response Body フィールド定義
+
+| フィールド | 型 | 必須 | 説明 |
+| :--- | :--- | :---: | :--- |
+| `task` | object | ○ | 更新後のタスクオブジェクト |
+| `task.id` | string | ○ | タスクID（例: `tsk_1001`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `task.title` | string | ○ | タスクタイトル |
+| `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
+| `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
+| `task.status` | string | ○ | ステータス（`not_started`, `in_progress`, `completed`） |
+| `task.due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
+| `task.is_pinned` | boolean | ○ | ピン留めフラグ |
+| `task.created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
+| `task.updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
+
 ##### Errors
-- `400 Bad Request`: バリデーション不正（文字数違反、ステータス不正値等）
-- `401 Unauthorized`: 未ログイン
-- `403 Forbidden`: CSRFトークン不正
-- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク）
+- `400 Bad Request`: バリデーション不正（文字数違反、ステータス不正値等、code: `"BAD_REQUEST"`）
+- `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
+- `403 Forbidden`: CSRFトークン不正（code: `"FORBIDDEN"`）
+- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク、code: `"NOT_FOUND"`）
 
 ---
 
@@ -228,6 +343,12 @@
 - **Path Parameters**:
   - `task_id` (string): 削除対象タスクID
 
+##### リクエスト評価順序
+1. **認証・CSRF検証 (`401 Unauthorized` / `403 Forbidden`)**:
+   ログインセッションの有効性を確認（未ログイン時は 401 `UNAUTHORIZED`）、および `X-CSRF-Token` ヘッダーを検証（欠落・不一致時は 403 `FORBIDDEN`）。
+2. **認可チェック・IDOR/BOLA検証 (`404 Not Found`)**:
+   パスパラメータ `task_id` の存在およびセッションユーザーの所有タスクかを検証（不一致または存在しない場合は 404 `NOT_FOUND`）。
+
 ##### Response (200 OK)
 ```json
 {
@@ -235,7 +356,15 @@
 }
 ```
 
+##### Response Body フィールド定義
+
+| フィールド | 型 | 必須 | 説明 |
+| :--- | :--- | :---: | :--- |
+| `message` | string | ○ | 削除完了メッセージ（例: `"Task has been deleted successfully."`） |
+
 ##### Errors
-- `401 Unauthorized`: 未ログイン
-- `403 Forbidden`: CSRFトークン不正
-- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク）
+- `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
+- `403 Forbidden`: CSRFトークン不正（code: `"FORBIDDEN"`）
+- `404 Not Found`: 認可エラー（存在しないタスクまたは他者所有タスク、code: `"NOT_FOUND"`）
+
+---
