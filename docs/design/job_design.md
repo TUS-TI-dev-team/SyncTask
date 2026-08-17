@@ -147,15 +147,15 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
   - 削除成功時: `[INFO] Cleaned up total {count_login} login logs and {count_mail} mail auth logs.`
 
 ### 3-5. レートリミットクリーンアップ (`CLEANUP_RATE_LIMITS`)
-- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1日（24時間）以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
-- **実行頻度**: 毎日 03:00 (`0 3 * * *` JST)
+- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1ヶ月(毎月1日)以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
+- **実行頻度**: 毎日 03:00 (`0 0 1 * *` JST)
 - **クリーンアップ SQL**:
 ```sql
 WITH target_rows AS (
     SELECT IP_ADDRESS
     FROM LOGIN_IP_RATE_LIMIT
     WHERE (BLOCKED_UNTIL IS NULL OR BLOCKED_UNTIL < NOW())
-      AND LAST_FAILED_AT < NOW() - INTERVAL '1 day'
+      AND LAST_FAILED_AT < NOW() - INTERVAL '1 MONTH'
     LIMIT :batch_size
 )
 DELETE FROM LOGIN_IP_RATE_LIMIT
