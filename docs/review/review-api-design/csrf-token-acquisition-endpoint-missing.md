@@ -1,6 +1,6 @@
 # CSRFトークン取得方法・エンドポイントの欠落
 
-- **Status**: Open
+- **Status**: Resolved
 - **Severity**: Major
 - **Created At**: 2026-08-17 15:01:00
 - **Target Files**:
@@ -38,3 +38,9 @@ CSRFトークンの検証を必須としているにもかかわらず、以下�
 セッション発行時（ログイン / 新規登録成功時）に `XSRF-TOKEN` Cookie（`HttpOnly=false`）を同時に設定し、クライアントはJavaScriptでこのCookieを読み取り `X-CSRF-Token` ヘッダーに設定する旨を共通仕様に明記する。
 
 いずれの方式を採用するかを決定し、セクション1.2に取得方法とライフサイクルを明記し、エンドポイント一覧に取得用エントリ（必要な場合）を追加する。
+
+---
+
+## 6. 修正完了報告
+
+- **対応内容**: Double Submit Cookie 方式を採用し、`auth/login` および `auth/register/verify-otp` 成功時に `Set-Cookie: XSRF-TOKEN=<csrf_token>; Secure; SameSite=Lax; Path=/`（`HttpOnly=false`）を発行する仕様を `api_design.md` 1.2, 3.1.2, 3.1.4 に明記しました。専用のCSRFトークン取得エンドポイントを新設することなく、セキュリティ要件を満たしました。

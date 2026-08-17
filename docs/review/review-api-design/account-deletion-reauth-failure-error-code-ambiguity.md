@@ -1,6 +1,6 @@
 # アカウント削除APIにおける再認証失敗エラーレスポンスの曖昧さ
 
-- **Status**: Open
+- **Status**: Resolved
 - **Severity**: Minor
 - **Created At**: 2026-08-17 15:01:00
 - **Target Files**:
@@ -31,3 +31,9 @@
 - `404 Not Found`: 認可エラー
 - `422 Unprocessable Entity`: 新パスワードが現在のパスワードと同一
 ```
+
+---
+
+## 4. 修正完了報告
+
+- **対応内容**: `DELETE users/{user_id}` および `PATCH users/{user_id}/password` のエラー定義を修正し、現在のパスワード不一致時は `401 Unauthorized` (code: `REAUTH_FAILED`) に統一し、5回連続失敗時はセッション強制破棄の上 `401 Unauthorized` (code: `SESSION_DESTROYED`) を返却する明示的なエラー分岐構造へ改善しました。
