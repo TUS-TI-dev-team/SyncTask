@@ -48,7 +48,7 @@
 | 優先度 | `PRIORITY` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'MEDIUM'` | `LOW` (低), `MEDIUM` (中・初期値), `HIGH` (高) | ✅ |
 | 締切日時 | `DUE_DATE` | `TIMESTAMPTZ` | 任意設定（未指定時は該当日 23:59 JST を適用） | ✅ |
 | タスクステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'NOT_STARTED'` | `NOT_STARTED` (未着手・初期値), `IN_PROGRESS` (進行中), `COMPLETED` (完了) | ✅ |
-| ピン止めフラグ | `IS_PINNED` | `BOOLEAN` / `DEFAULT FALSE` | | ✅ |
+| ピン止めフラグ | `IS_PINNED` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | | ✅ |
 | コメント | `COMMENT` | `TEXT` | 補足メモ（0〜1000文字） | ✅ |
 | 作成日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
 | 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | | ✅ |
@@ -80,12 +80,12 @@
 | 認証種別 | `PURPOSE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) | ✅ |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 既存ユーザー識別用（パスワードリセット・メール変更時。新規登録時はNULL） | ✅ |
 | 登録予定ユーザー名 | `PENDING_USERNAME` | `VARCHAR(20)` | アカウント作成時は登録予定値 | ✅ |
-| 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` / `NOT NULL` | 認証対象 / 変更予定メールアドレス（新規登録・メール変更・パスワードリセットにおける重複排除・排他制御に利用） | ✅ |
+| 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(320)` / `NOT NULL` | 認証対象 / 変更予定メールアドレス（登録・更新・認証要求時に一律小文字 `toLowerCase()` へ正規化して保存。新規登録・メール変更・パスワードリセットにおける重複排除・排他制御に利用） | ✅ |
 | 登録予定パスワードハッシュ | `PENDING_PASSWORD_HASH` | `VARCHAR(255)` | メール変更時・パスワードリセット時はNULL | ✅ |
 | OTPハッシュ | `OTP_HASH` | `VARCHAR(255)` / `NOT NULL` | 8桁英数字（大文字小文字区別なし）のハッシュ | ✅ |
 | ステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL` | `active`, `verified`, `expired`, `locked`, `completed` | ✅ |
-| 試行失敗回数 | `ATTEMPT_COUNT` | `INT` / `DEFAULT 0` | 1つのOTPに対して最大5回（5回失敗時は自動再送・失効制御） | ✅ |
-| 再送回数 | `SEND_COUNT` | `INT` / `DEFAULT 0` | 手動/自動再送回数 | ✅ |
+| 試行失敗回数 | `ATTEMPT_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 1つのOTPに対して最大5回（5回失敗時は自動再送・失効制御） | ✅ |
+| 再送回数 | `SEND_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 手動/自動再送回数 | ✅ |
 | 直前送信日時 | `LAST_SENT_AT` | `TIMESTAMPTZ` / `NOT NULL` | 直前の送信タイムスタンプ（60秒クールダウン判定用） | ✅ |
 | 有効期限 | `EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 発行から5分（パスワードリセットの検証成功時はその時点から15分間に延長） | ✅ |
 | 全体最大有効期限 | `MAX_EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 初回発行から15分間（手続き全体の排他維持・失効上限） | ✅ |
@@ -94,7 +94,7 @@
 > [!NOTE]
 > **OTPセッションのパージ方針**
 > - 新パスワード設定完了時やアカウント作成確定時等に直ちにDBから物理削除されます。
-> - 有効期限切れ（`EXPIRES_AT` または `MAX_EXPIRES_AT` 経過）および無効化されたレコードは、Cronジョブ（15分ごと / Cron: `*/15 * * * *` JST）にてDBから一括物理削除されます。
+> - 有効期限切れ（全体最大有効期限 `MAX_EXPIRES_AT` 経過、またはステータスが `expired`, `locked`, `completed` かつ `EXPIRES_AT` 経過）のレコードは、Cronジョブ（15分ごと / Cron: `*/15 * * * *` JST）にてDBから一括物理削除されます。
 
 ---
 
@@ -127,7 +127,7 @@
 | --- | --- | --- | --- | --- |
 | ログID | `LOG_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID | ✅ |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` | 認証成功時または特定可能な場合のUID（未特定時はNULL） | ✅ |
-| メールアドレス | `EMAIL` | `VARCHAR(255)` / `NOT NULL` | ログイン試行対象メールアドレス | ✅ |
+| メールアドレス | `EMAIL` | `VARCHAR(320)` / `NOT NULL` | ログイン試行対象メールアドレス | ✅ |
 | IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `NOT NULL` | アクセス元IPアドレス | ✅ |
 | ログイン成否 | `IS_SUCCESS` | `BOOLEAN` / `NOT NULL` | `TRUE` (成功) / `FALSE` (失敗) | ✅ |
 | 記録日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | ログイン試行日時（インデックス対象） | ✅ |
@@ -163,7 +163,7 @@
 | --- | --- | --- | --- | --- |
 | ログID | `LOG_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID | ✅ |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` | 対象ユーザーID（未登録・未ログイン時はNULL） | ✅ |
-| 対象メールアドレス | `EMAIL` | `VARCHAR(255)` / `NOT NULL` | 認証対象メールアドレス | ✅ |
+| 対象メールアドレス | `EMAIL` | `VARCHAR(320)` / `NOT NULL` | 認証対象メールアドレス | ✅ |
 | 認証種別 | `AUTH_TYPE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) | ✅ |
 | アクセス元IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `NOT NULL` | クライアントIPアドレス | ✅ |
 | 処理イベント種別 | `EVENT_TYPE` | `VARCHAR(30)` / `NOT NULL` | `ISSUED` (発行), `VERIFY_SUCCESS` (検証成功), `VERIFY_FAILED` (検証失敗), `RESEND_REQUESTED` (手動再送), `AUTO_RESEND` (5回失敗時自動処理) | ✅ |
@@ -182,8 +182,14 @@
 
 ### 7.1 タスク管理 (`TASK`)
 ```sql
--- タスク一覧の複合ソート高速化 (ユーザー別、ステータス別、ピン留め降順、締切日時昇順 NULLS LAST、作成日時降順)
+-- タスク一覧の複合ソート高速化 (ユーザー別、ステータス指定時: ピン留め降順、締切日時昇順 NULLS LAST、作成日時降順)
 CREATE INDEX idx_task_user_status_sort ON TASK (USER_ID, STATUS, IS_PINNED DESC, DUE_DATE ASC NULLS LAST, CREATED_AT DESC);
+
+-- タスク一覧の複合ソート高速化 (ユーザー別、全ステータス取得時: ピン留め降順、締切日時昇順 NULLS LAST、作成日時降順)
+CREATE INDEX idx_task_user_sort ON TASK (USER_ID, IS_PINNED DESC, DUE_DATE ASC NULLS LAST, CREATED_AT DESC);
+
+-- カレンダー表示および締切日範囲検索用 (ユーザー別、締切日時)
+CREATE INDEX idx_task_user_due_date ON TASK (USER_ID, DUE_DATE);
 ```
 
 ### 7.2 セッション管理 (`LOGIN_SESSION`, `OTP_SESSION`)
@@ -194,11 +200,14 @@ CREATE INDEX idx_login_session_user ON LOGIN_SESSION (USER_ID);
 -- 有効期限切れセッションの日次Cronパージ用
 CREATE INDEX idx_login_session_expires ON LOGIN_SESSION (EXPIRES_AT);
 
--- OTPセッションのメールアドレス排他判定および有効セッション照会
+-- 同一メールアドレスに対する有効なOTPセッションの重複発行防止（排他制御用部分一意インデックス）
+CREATE UNIQUE INDEX uq_otp_session_active_pending_email ON OTP_SESSION (PENDING_EMAIL) WHERE STATUS IN ('active', 'verified');
+
+-- OTPセッションのメールアドレス照会および状態遷移用
 CREATE INDEX idx_otp_session_pending_email ON OTP_SESSION (PENDING_EMAIL, STATUS, EXPIRES_AT);
 
--- OTPセッションの15分間隔Cronパージ用
-CREATE INDEX idx_otp_session_purge ON OTP_SESSION (EXPIRES_AT, MAX_EXPIRES_AT);
+-- OTPセッションの15分間隔Cronパージ用（全体最大有効期限または失効レコードのクリーンアップ）
+CREATE INDEX idx_otp_session_purge ON OTP_SESSION (MAX_EXPIRES_AT, STATUS, EXPIRES_AT);
 ```
 
 ### 7.3 レートリミット管理 (`LOGIN_IP_RATE_LIMIT`)

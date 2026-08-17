@@ -11,7 +11,7 @@
 
 | job_type | 説明 | トリガー / 起動タイミング | 処理対象 | 実行方式 | 冪等性 |
 | --- | --- | --- | --- | --- | --- |
-| `CLEANUP_OTP_SESSIONS` | 期限切れの OTP セッションレコードの削除 | 15分ごと Cron スケジュール | `OTP_SESSION` テーブル (`EXPIRES_AT < NOW()`) | SQL DELETE | 保証 |
+| `CLEANUP_OTP_SESSIONS` | 期限切れの OTP セッションレコードの削除 | 15分ごと Cron スケジュール | `OTP_SESSION` テーブル (`MAX_EXPIRES_AT < NOW()` 等) | SQL DELETE | 保証 |
 | `CLEANUP_EXPIRED_SESSIONS` | 期限切れの ログインセッションレコードの削除 | 毎日 00:00 Cron スケジュール | `LOGIN_SESSION` テーブル (`EXPIRES_AT < NOW()`) | SQL DELETE | 保証 |
 
 ---
@@ -20,12 +20,13 @@
 
 ### 2-1. OTP セッションクリーンアップ (`CLEANUP_OTP_SESSIONS`)
 
-- **目的**: 5分間の有効期限が過ぎた仮登録・認証用の `OTP_SESSION` テーブルの不要レコードを削除し、DB の肥大化を防止する。
+- **目的**: 全体最大有効期限（15分）が経過したレコード、または明示的に無効化・失効済み（`STATUS IN ('expired', 'locked', 'completed')`）かつ単発有効期限（5分）が過ぎた `OTP_SESSION` テーブルの不要レコードを削除し、DB の肥大化を防止および排他ロックを解放する。
 - **実行頻度**: 15分ごと (`*/15 * * * *`)
 - **クリーンアップ SQL**:
 ```sql
 DELETE FROM OTP_SESSION
-WHERE EXPIRES_AT < NOW();
+WHERE MAX_EXPIRES_AT < NOW()
+   OR (STATUS IN ('expired', 'locked', 'completed') AND EXPIRES_AT < NOW());
 ```
 - **実行ログ記録**:
   - 削除成功時: 削除件数を `INFO` ログに出力（例: `[INFO] Cleaned up 12 expired OTP sessions.`）
@@ -57,7 +58,7 @@ sequenceDiagram
     Note over Cron,DB: 15分周期クリーンアップ (OTP_SESSION)
     Cron->>Runner: CLEANUP_OTP_SESSIONS 起動
     activate Runner
-    Runner->>DB: DELETE FROM OTP_SESSION WHERE EXPIRES_AT < NOW()
+    Runner->>DB: DELETE FROM OTP_SESSION WHERE MAX_EXPIRES_AT < NOW() OR (STATUS IN ('expired', 'locked', 'completed') AND EXPIRES_AT < NOW())
     activate DB
     DB-->>Runner: 削除件数 (rows_affected)
     deactivate DB
