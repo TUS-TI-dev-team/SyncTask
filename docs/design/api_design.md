@@ -21,9 +21,10 @@
 ### 1.2 セキュリティ & CSRF・アカウント列挙対策
 - **CSRF対策**:
   - Cookieベースの認証を行うため、状態を変更するすべてのHTTPメソッド（`POST`, `PUT`, `PATCH`, `DELETE`）において CSRFトークンの検証を必須とします。
-  - クライアントは `X-CSRF-Token` リクエストヘッダーに有効なCSRFトークンを付与して送信します。
+  - CSRFトークンは **Double Submit Cookie 方式** にて管理します。ログイン成功（`auth/login`）およびアカウント新規登録完了（`auth/register/verify-otp`）時に、レスポンスヘッダーで `Set-Cookie: XSRF-TOKEN=<csrf_token>; Secure; SameSite=Lax; Path=/`（JavaScriptから読み取り可能な `HttpOnly=false`）を発行します。
+  - クライアントは JavaScript で Cookie から CSRF トークンを取得し、状態変更リクエストの `X-CSRF-Token` ヘッダーに付与して送信します。
 - **アカウント列挙防止 (User Enumeration 対策)**:
-  - 新規登録（`auth/register/request-otp`）、パスワードリセット（`auth/password-reset/request-otp`）、メールアドレス変更（`auth/change-email/request-otp`）において、指定されたメールアドレスの登録有無、他ユーザーとの重複、または現在と同一メールアドレスの指定にかかわらず、**一貫してダミーOTPセッションを発行して `200 OK`（応答遅延 1.0s ± 0.1s）を返却**します。これにより、エラーコードや応答差分からメールアドレスの登録状況が推測されることを完全に防止します。
+  - 新規登録（`auth/register/request-otp`）、パスワードリセット（`auth/password-reset/request-otp`）、メールアドレス変更（`auth/change-email/request-otp`）において、指定されたメールアドレスの登録有無、他ユーザーとの重複、現在と同一メールアドレスの指定、または**他ユーザーの有効なOTPセッション期間中（手続き中）**の指定にかかわらず、**一貫してダミーOTPセッションを発行して `200 OK`（応答遅延 1.0s ± 0.1s）を返却**します。これにより、エラーコードや応答差分からメールアドレスの登録状況が推測されることを完全に防止します。
   - ダミーOTPセッションに対する後続の検証（`verify-otp`）や再送（`resend-otp`）に対しても、実セッションと全く同一のエラーコード（400, 410, 422, 429）および応答遅延（1.0s ± 0.1s）を適用します。
   - ログイン失敗時は、メールアドレス不一致・パスワード不一致・論理削除済みアカウントのいずれも一律で `401 Unauthorized`（code: `UNAUTHORIZED`、遅延 1.0s ± 0.1s）を返却します。
 - **認可制御 (IDOR / BOLA 対策)**:
@@ -55,7 +56,7 @@
 | HTTP Status | エラーコード (`code`) | 説明 |
 | :--- | :--- | :--- |
 | 400 | `BAD_REQUEST` | リクエスト形式またはバリデーション不正、OTP不一致 |
-| 401 | `UNAUTHORIZED` | 未ログイン、セッション無効・期限切れ、またはログイン認証失敗 |
+| 401 | `UNAUTHORIZED` | 未ログイン、セッション無効・期限切れ、ログイン認証失敗、または再認証失敗（5回失敗によるセッション破棄含む） |
 | 403 | `FORBIDDEN` | CSRFトークン不正または権限不足、未検証OTPセッションでの更新試行 |
 | 404 | `NOT_FOUND` | 指定されたリソース（または他者所有リソース）が存在しない |
 | 409 | `CONFLICT` | リソースの競合（※アカウント列挙防止のためメールアドレス重複等には使用しません） |
@@ -89,7 +90,7 @@
 | **タスク (Tasks)** | `GET` | `tasks` | タスク一覧取得（検索・絞り込み・カレンダー期間取得・ページネーション） | 必須 |
 | | `POST` | `tasks` | 新規タスク作成（単一作成 / 毎週繰り返し一括作成） | 必須 |
 | | `GET` | `tasks/{task_id}` | 単一タスクの詳細取得 | 必須 |
-| | `PUT` | `tasks/{task_id}` | タスク情報の更新（全項目更新および特定フィールドの部分更新兼用） | 必須 |
+| | `PATCH` | `tasks/{task_id}` | タスク情報の部分更新（特定フィールドのみの更新） | 必須 |
 | | `DELETE` | `tasks/{task_id}` | タスクの物理削除 | 必須 |
 
 ---
@@ -126,7 +127,7 @@
   "expires_in_seconds": 300
 }
 ```
-※既に登録済みのメールアドレスが指定された場合も、メールアドレスの登録有無を秘匿するためダミーの `otp_session_id` とマスク文字列を返し、`200 OK`（遅延 1.0s ± 0.1s）を返却します。
+※既に登録済みのメールアドレス、または**他ユーザーのOTPセッション有効期間中（手続き中）**のメールアドレスが指定された場合も、メールアドレスの登録有無を秘匿するためダミーの `otp_session_id` とマスク文字列を返し、`200 OK`（遅延 1.0s ± 0.1s）を返却します。
 
 ##### Errors
 - `400 Bad Request`: 入力バリデーション違反（文字数・形式違反等）
@@ -134,7 +135,7 @@
 ---
 
 #### 3.1.2 `POST auth/register/verify-otp`
-入力されたOTPを検証し、成功時にアカウントをDBへ本登録して新規ログインセッション（Cookie）を発行します。
+入力されたOTPを検証し、成功時にアカウントをDBへ本登録して新規ログインセッション（Cookie）およびCSRFトークンCookieを発行します。
 
 - **認証**: 不要
 
@@ -153,6 +154,7 @@
 
 ##### Response (201 Created)
 - **Set-Cookie**: `sync_task_sid=<session_token>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+- **Set-Cookie**: `XSRF-TOKEN=<csrf_token>; Secure; SameSite=Lax; Path=/`
 
 ```json
 {
@@ -163,6 +165,7 @@
   }
 }
 ```
+※検証成功後、自動ログイン処理を行います。なおリクエスト時に既存のログインセッションCookie（`sync_task_sid`）が送信された場合は、複数アカウントへの同時重複ログインを防止するため、その旧セッションをDBから物理削除した上で新しいセッションを発行します。
 
 ##### Errors
 - `400 Bad Request`: OTP不一致（入力試行5回未満。ダミーセッション時も常に本エラーとなり遅延 1.0s ± 0.1s）
@@ -200,7 +203,7 @@
 ---
 
 #### 3.1.4 `POST auth/login`
-メールアドレスとパスワードでログイン認証を行い、成功時にセッションCookieを発行します。
+メールアドレスとパスワードでログイン認証を行い、成功時にセッションCookieおよびCSRFトークンCookieを発行します。
 
 - **認証**: 不要
 
@@ -219,6 +222,7 @@
 
 ##### Response (200 OK)
 - **Set-Cookie**: `sync_task_sid=<session_token>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+- **Set-Cookie**: `XSRF-TOKEN=<csrf_token>; Secure; SameSite=Lax; Path=/`
 
 ```json
 {
@@ -241,22 +245,18 @@
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
-- **Request Body**: なし（空オブジェクト `{}`）
 
 ##### Response (200 OK)
-- **Set-Cookie**: `sync_task_sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
+- **Set-Cookie**: `sync_task_sid=; Max-Age=0`
+- **Set-Cookie**: `XSRF-TOKEN=; Max-Age=0`
 
-```json
-{
-  "message": "Logged out successfully."
-}
-```
-※セッションが既に期限切れや無効な場合も `200 OK` を返却し Cookie を破棄します（冪等性）。
+##### Errors
+- `401 Unauthorized`: 未ログイン
 
 ---
 
 #### 3.1.6 `POST auth/password-reset/request-otp`
-パスワードリセット用のOTPを生成してメール送信します。
+パスワードリセット用OTPを発行します。
 
 - **認証**: 不要
 
@@ -275,15 +275,14 @@
   "expires_in_seconds": 300
 }
 ```
-※未登録メールアドレスの場合も存在を秘匿するためダミーの `otp_session_id` を返却し `200 OK`（遅延 1.0s ± 0.1s）。
 
 ##### Errors
-- `400 Bad Request`: メールアドレス形式不正
+- `400 Bad Request`: 入力形式違反
 
 ---
 
 #### 3.1.7 `POST auth/password-reset/verify-otp`
-リセット用OTPを検証し、新パスワード設定用の一時トークン/検証済みステータス（15分有効）へ移行します。
+パスワードリセット用OTPを検証します。
 
 - **認証**: 不要
 
@@ -298,21 +297,18 @@
 ##### Response (200 OK)
 ```json
 {
-  "otp_session_id": "otp_sess_reset_12345",
-  "status": "verified",
-  "expires_in_seconds": 900
+  "message": "OTP verified successfully."
 }
 ```
 
 ##### Errors
-- `400 Bad Request`: OTP不一致（ダミーセッション時も常に本エラーとなり遅延 1.0s ± 0.1s）
-- `410 Gone`: 期限切れ
-- `422 Unprocessable Entity`: 5回失敗による自動再送（`"code": "OTP_REISSUED_DUE_TO_FAILURES"`）
+- `400 Bad Request`: OTP不一致
+- `410 Gone`: 有効期限切れ
 
 ---
 
 #### 3.1.8 `POST auth/password-reset/resend-otp`
-パスワードリセット用OTPを再送信します（60秒クールダウン）。
+パスワードリセット用OTPを再送します。
 
 - **認証**: 不要
 
@@ -326,22 +322,14 @@
 ##### Response (200 OK)
 ```json
 {
-  "message": "OTP has been resent successfully.",
-  "masked_email": "user**********@example.com",
-  "expires_in_seconds": 300
+  "message": "OTP has been resent successfully."
 }
 ```
-※ダミーセッションの場合も同様に `200 OK`（遅延 1.0s ± 0.1s）を返却します。
-
-##### Errors
-- `429 Too Many Requests`: クールダウン期間中（60秒未満）
-- `410 Gone`: 初回発行から15分経過
 
 ---
 
 #### 3.1.9 `POST auth/password-reset/reset`
-検証済みOTPセッションに基づき新しいパスワードを登録し、旧セッションを一括無効化します。
-※パスワードリセットは忘却時の復旧手段であるため、現在設定されているパスワードと同一の新パスワードが入力された場合もエラーとせずそのまま更新完了（`200 OK`）とします。
+パスワードをリセットします。
 
 - **認証**: 不要
 
@@ -349,25 +337,22 @@
 ```json
 {
   "otp_session_id": "otp_sess_reset_12345",
-  "new_password": "NewSecurePassword456!"
+  "otp": "A1B2C3D4",
+  "new_password": "NewPassword123!"
 }
 ```
 
 ##### Response (200 OK)
 ```json
 {
-  "message": "Password has been reset successfully. Please log in with your new password."
+  "message": "Password has been reset successfully."
 }
 ```
-
-##### Errors
-- `400 Bad Request`: パスワード要件違反（文字数・文字種・ユーザー名/ローカル部包含禁止）
-- `403 Forbidden`: 未検証のOTPセッションIDまたは無効なセッション
 
 ---
 
 #### 3.1.10 `POST auth/change-email/request-otp`
-メールアドレス変更手続きを開始し、変更先新メールアドレス宛にOTPを送信します。
+メールアドレス変更のためのOTPを送信します。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
@@ -375,7 +360,7 @@
 ##### Request Body
 ```json
 {
-  "new_email": "new_address@example.com"
+  "new_email": "new_user@example.com"
 }
 ```
 
@@ -383,22 +368,14 @@
 ```json
 {
   "otp_session_id": "otp_sess_chg_998877",
-  "masked_email": "new_**********@example.com",
   "expires_in_seconds": 300
 }
 ```
-※平文の `OTP` はレスポンスに含まれません。  
-※変更先メールアドレスが現在のメールアドレスと同一の場合や、既に他ユーザーに登録済みの場合は、アカウント存在有無および重複を秘匿するためダミーOTPセッションを返却し、エラーコードで区別せず `200 OK`（遅延 1.0s ± 0.1s）を返却します。
-
-##### Errors
-- `400 Bad Request`: メールアドレス形式不正
-- `401 Unauthorized`: 未ログイン
-- `403 Forbidden`: CSRFトークン不正
 
 ---
 
 #### 3.1.11 `POST auth/change-email/verify-otp`
-新メールアドレス宛のOTPを検証してメールアドレス変更を確定し、全端末のログインセッションを一括物理削除します。
+メールアドレス変更を確定させます。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
@@ -412,18 +389,11 @@
 ```
 
 ##### Response (200 OK)
-- **Set-Cookie**: `sync_task_sid=; Max-Age=0`（全端末セッション無効化・再ログイン要求）
-
 ```json
 {
-  "message": "Email address has been updated successfully. Please log in again with your new email."
+  "message": "Email address has been updated successfully."
 }
 ```
-
-##### Errors
-- `400 Bad Request`: OTP不一致（ダミーセッション時も常に本エラーとなり遅延 1.0s ± 0.1s）
-- `410 Gone`: 期限切れ
-- `422 Unprocessable Entity`: 5回失敗自動再送（`"code": "OTP_REISSUED_DUE_TO_FAILURES"`）
 
 ---
 
@@ -494,6 +464,299 @@
 ##### Request Body
 ```json
 {
+  "username": "newUsername"
+}
+```
+
+| フィールド | 型 | 必須 | 制約・バリデーション |
+| :--- | :--- | :---: | :--- |
+| `username` | string | ○ | 2〜20文字、英数字。現在のユーザー名と同一の場合は 422 エラー |
+
+##### Response (200 OK)
+```json
+{
+  "user": {
+    "id": "usr_987654321",
+    "username": "newUsername",
+    "email": "user@example.com"
+  }
+}
+```
+
+##### Errors
+- `400 Bad Request`: ユーザー名要件違反（文字数・使用可能文字不正）
+- `422 Unprocessable Entity`: 現在のユーザー名と同一（`"code": "SAME_AS_CURRENT_USERNAME"`）
+- `404 Not Found`: 認可エラー
+
+---
+
+#### 3.2.3 `DELETE users/{user_id}`
+パスワード再認証を行い、アカウントを論理削除（`IS_DELETED=true`）します。所有タスクデータおよび全セッションは物理削除されます。
+
+- **認証**: 必須（Cookie）
+- **Headers**: `X-CSRF-Token: <token>`
+- **Path Parameters**:
+  - `user_id` (string): 対象ユーザーID（セッションと一致必須）
+
+##### Request Body
+```json
+{
+  "password": "Password123!"
+}
+```
+
+##### Response (200 OK)
+- **Set-Cookie**: `sync_task_sid=; Max-Age=0`
+
+```json
+{
+  "message": "Account has been deleted successfully."
+}
+```
+
+##### Errors
+- `400 Bad Request`: パスワード再認証失敗（5回連続失敗時はセッション強制破棄・401 Unauthorized）
+- `404 Not Found`: 認可エラー
+
+---
+
+#### 3.2.4 `PATCH users/{user_id}/password`
+現在のパスワードを検証した上で、新しいパスワードへ変更し、全セッションを一括物理削除します。
+
+- **認証**: 必須（Cookie）
+- **Headers**: `X-CSRF-Token: <token>`
+- **Path Parameters**:
+  - `user_id` (string): 対象ユーザーID（セッションと一致必須）
+
+##### Request Body
+```json
+{
+  "current_password": "Password123!",
+  "new_password": "NewSecurePassword456!"
+}
+```
+
+##### Response (200 OK)
+- **Set-Cookie**: `sync_task_sid=; Max-Age=0`（再ログイン要求）
+
+```json
+{
+  "message": "Password has been updated successfully. Please log in again."
+}
+```
+
+##### Errors
+- `400 Bad Request`: 新パスワード要件違反、または現在のパスワード不一致（5回連続失敗でセッション破棄・401）
+- `422 Unprocessable Entity`: 新パスワードが現在のパスワードと同一（`"code": "SAME_AS_CURRENT_PASSWORD"`）
+- `404 Not Found`: 認可エラー
+
+---
+
+### 3.3 タスク管理 (Tasks)
+
+#### 3.3.1 `GET tasks`
+タスク一覧を取得します。クエリパラメータにより、通常一覧、優先タスク・締切間近・ピン留めビュー、検索絞り込み、カレンダー表示用期間取得、ページネーションに対応します。
+
+- **認証**: 必須（Cookie）
+
+##### Query Parameters
+
+| パラメータ名 | 型 | 必須 | デフォルト | 説明 |
+| :--- | :--- | :---: | :--- | :--- |
+| `page` | integer | × | `1` | ページ番号（1始まり） |
+| `limit` | integer | × | `20` | 1ページあたりの取得件数（最大100件） |
+| `view_type` | string | × | - | ビュー指定: `high_priority`（優先高）, `near_deadline`（72時間以内/期限超過）, `pinned`（ピン留めのみ） |
+| `include_completed`| boolean | × | `false` | 完了タスクを含めるか（`true` / `false`） |
+| `keyword` | string | × | - | タスク名およびコメントの部分一致検索（Case-Insensitive、トリム処理） |
+| `priority` | string | × | - | 優先度絞り込み: `high`, `medium`, `low` |
+| `status` | string | × | - | ステータス絞り込み: `not_started`, `in_progress`, `completed` |
+| `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。指定日 23:59:59 までのタスクを検索） |
+| `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`） |
+| `end_date` | string | × | - | カレンダー表示用: グリッド取得終了日（`YYYY-MM-DD`） |
+| `sort_by` | string | × | `default` | ソート種別（`default`: ピン留め優先→締切昇順→作成日時降順） |
+
+##### Response (200 OK)
+```json
+{
+  "items": [
+    {
+      "id": "tsk_1001",
+      "user_id": "usr_987654321",
+      "title": "課題レポート提出",
+      "comment": "第5章の要約を含むこと\n参考文献を記載",
+      "priority": "high",
+      "status": "in_progress",
+      "due_datetime": "2026-08-20T23:59:00+09:00",
+      "is_pinned": true,
+      "created_at": "2026-08-17T10:00:00+09:00",
+      "updated_at": "2026-08-17T11:30:00+09:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total_count": 45,
+    "total_pages": 3
+  }
+}
+```
+
+##### Errors
+- `400 Bad Request`: クエリパラメータ不正（日付フォーマット違反、limit超過等）
+- `401 Unauthorized`: 未ログイン
+
+---
+
+#### 3.3.2 `POST tasks`
+新規タスクを作成します。単一タスク作成に加え、期間と曜日を指定した毎週タスクの即時一括生成（最大100件）に対応します。
+
+- **認証**: 必須（Cookie）
+- **Headers**: `X-CSRF-Token: <token>`
+
+##### Request Body (1: 単一タスク作成時)
+```json
+{
+  "title": "課題レポート提出",
+  "comment": "第5章の要約を含むこと",
+  "priority": "high",
+  "due_datetime": "2026-08-20T23:59:00+09:00"
+}
+```
+
+##### Request Body (2: 毎週繰り返し一括作成時)
+```json
+{
+  "title": "週次ゼミ発表準備",
+  "comment": "進捗スライド作成",
+  "priority": "medium",
+  "is_recurring": true,
+  "recurring_rule": {
+    "start_date": "2026-08-22",
+    "end_date": "2026-10-31",
+    "days_of_week": ["saturday"],
+    "due_time": "18:00"
+  }
+}
+```
+
+##### Request Body フィールド定義
+
+| フィールド | 型 | 必須 | 制約・バリデーション |
+| :--- | :--- | :---: | :--- |
+| `title` | string | ○ | 1〜100文字（トリム後）。改行・タブ等の制御文字禁止 |
+| `comment` | string | × | 0〜1000文字（トリム後）。改行は `\n` に正規化 |
+| `priority` | string | × | `high`, `medium`, `low`（デフォルト: `medium`） |
+| `due_datetime` | string | × | ISO 8601 日時文字列。単一作成時用（省略時は当日 `23:59:00+09:00`）。※`is_recurring: true` 時は指定されていても無視されます |
+| `is_recurring` | boolean | × | 繰り返し一括作成フラグ（デフォルト: `false`） |
+| `recurring_rule` | object | △ | `is_recurring: true` 時のみ必須（`false` 時は無視） |
+| `recurring_rule.start_date` | string | ○ | 開始日（`YYYY-MM-DD`）。`start_date <= end_date` |
+| `recurring_rule.end_date` | string | ○ | 終了日（`YYYY-MM-DD`）。最大1年間（52週以内） |
+| `recurring_rule.days_of_week` | array[string] | ○ | `["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]` より1つ以上選択 |
+| `recurring_rule.due_time` | string | × | 締切時刻 `HH:mm`（省略時は `23:59`） |
+
+※`is_recurring: true` の場合、生成件数が1〜100件の範囲内で即時一括生成されます（0件または101件以上の場合はエラーとなり作成されません）。
+
+##### Response (201 Created)
+```json
+{
+  "created_count": 10,
+  "tasks": [
+    {
+      "id": "tsk_2001",
+      "user_id": "usr_987654321",
+      "title": "週次ゼミ発表準備",
+      "comment": "進捗スライド作成",
+      "priority": "medium",
+      "status": "not_started",
+      "due_datetime": "2026-08-22T18:00:00+09:00",
+      "is_pinned": false,
+      "created_at": "2026-08-17T12:00:00+09:00",
+      "updated_at": "2026-08-17T12:00:00+09:00"
+    }
+  ]
+}
+```
+
+##### Errors
+- `400 Bad Request`: バリデーション不正（文字数違反、期間・曜日不整合等）
+- `401 Unauthorized`: 未ログイン
+- `403 Forbidden`: CSRFトークン不正
+
+---
+
+#### 3.3.3 `GET tasks/{task_id}`
+指定されたタスクの詳細情報を取得します。
+
+- **認証**: 必須（Cookie）
+- **Path Parameters**:
+  - `task_id` (string): タスクID
+
+##### Response (200 OK)
+```json
+{
+  "task": {
+    "id": "tsk_1001",
+    "user_id": "usr_987654321",
+    "title": "課題レポート提出",
+    "comment": "第5章の要約を含むこと",
+    "priority": "high",
+    "status": "in_progress",
+    "due_datetime": "2026-08-20T23:59:00+09:00",
+    "is_pinned": true,
+    "created_at": "2026-08-17T10:00:00+09:00",
+    "updated_at": "2026-08-17T11:30:00+09:00"
+  }
+}
+```
+
+##### Errors
+- `401 Unauthorized`: 未ログイン
+- `404 Not Found`: 存在しないタスクまたは他ユーザー所有タスク
+
+---
+
+#### 3.3.4 `PATCH tasks/{task_id}`
+タスク情報を部分更新します。リクエストボディに含まれるフィールドのみが更新対象となります。
+
+- **認証**: 必須（Cookie）
+- **Headers**: `X-CSRF-Token: <token>`
+- **Path Parameters**:
+  - `task_id` (string): 更新対象タスクID
+
+##### Request Body
+```json
+{
+  "title": "課題レポート提出（修正版）",
+  "comment": "参考文献の追記完了",
+  "priority": "high",
+  "status": "completed",
+  "due_datetime": "2026-08-21T23:59:00+09:00",
+  "is_pinned": true
+}
+```
+
+##### Response (200 OK)
+```json
+{
+  "task": {
+    "id": "tsk_1001",
+    "user_id": "usr_987654321",
+    "title": "課題レポート提出（修正版）",
+    "comment": "参考文献の追記完了",
+    "priority": "high",
+    "status": "completed",
+    "due_datetime": "2026-08-21T23:59:00+09:00",
+    "is_pinned": true,
+    "created_at": "2026-08-17T10:00:00+09:00",
+    "updated_at": "2026-08-17T13:00:00+09:00"
+  }
+}
+```
+
+##### Errors
+- `400 Bad Request`: バリデーション不正（文字数違反、ステータス不正値等）
+- `401 Unauthorized`: 未ログイン
+- `403 Forbidden`: CSRFトークン不正
   "username": "newUsername"
 }
 ```
