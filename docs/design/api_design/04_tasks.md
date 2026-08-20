@@ -1,7 +1,7 @@
 ### 3.3 タスク管理 (Tasks)
 
 #### 3.3.1 `GET tasks`
-タスク一覧を取得します。クエリパラメータにより、通常一覧、優先タスク・締切間近・ピン留めビュー、検索絞り込み、カレンダー表示用期間取得、ページネーションに対応します。
+タスク一覧を取得します。クエリパラメータにより、通常一覧、優先タスク・締切間近・ピン留めビュー、検索絞り込み、カレンダー表示用期間取得に対応します。
 
 - **認証**: 必須（Cookie）
 
@@ -9,28 +9,26 @@
 
 | パラメータ名 | 型 | 必須 | デフォルト | 説明 |
 | :--- | :--- | :---: | :--- | :--- |
-| `page` | integer | × | `1` | ページ番号（1始まり。1以上の整数必須。1未満の数値または非数値指定時は 400 Bad Request） |
-| `limit` | integer | × | `20` | 1ページあたりの取得件数（1以上100以下の整数必須。1未満・100超過の数値または非数値指定時は 400 Bad Request） |
 | `view_type` | string | × | - | ビュー指定: `high_priority`（優先高）, `near_deadline`（72時間以内/期限超過。`include_completed` の指定に関わらず常に完了タスクは除外。※`status=completed` との同時指定はパラメータ競合として 400 Bad Request）, `pinned`（ピン留めのみ）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
 | `include_completed`| boolean | × | 通常: `false`<br>カレンダー: `true` | 完了タスクを含めるか（`true` / `false`）。`true` または `false` 以外の文字列・数値が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却。通常一覧時はデフォルト `false`、`start_date` / `end_date` 指定（カレンダー表示）時はデフォルト `true`。なお `status` が明示指定された場合は本パラメータは無視されます |
 | `keyword` | string | × | - | タスク名およびコメントの部分一致検索（Case-Insensitive、前後の空白文字（半角・全角スペース、タブ、改行）をトリム処理。トリム後のキーワードが100文字を超える場合は 400 Bad Request（code: `"BAD_REQUEST"`）。SQLワイルドカード特殊文字 % や _ や \ はリテラルエスケープして部分一致を検索。未入力またはトリム後空文字の場合はキーワードによる絞り込みを行わない） |
 | `priority` | string | × | - | 優先度絞り込み: `high`, `medium`, `low`。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
 | `status` | string | × | - | ステータス絞り込み: `not_started`, `in_progress`, `completed`。明示指定時は `include_completed` の指定を無視して指定ステータスを最優先適用（※`view_type=near_deadline` との同時指定は 400 Bad Request）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
 | `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。指定日当日の `00:00:00+09:00 <= due_datetime <= 23:59:59+09:00` の全タスク、および指定日より過去 `due_datetime < 00:00:00+09:00` の未完了タスク（`status != 'completed'`）を抽出対象とし、過去の完了済みタスクは常に除外。締切日時未設定 `null` のタスクは除外。未指定時は絞り込みを行わない。※`start_date` / `end_date` との同時指定は不可） |
-| `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`）。`end_date` とペアで指定必須。指定時はページネーション limit を解除し期間内の全タスクを返却。最大許容期間幅は 42日間（6週間）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
+| `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`）。`end_date` とペアで指定必須。最大許容期間幅は 42日間（6週間）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
 | `end_date` | string | × | - | カレンダー表示用: グリッド取得終了日（`YYYY-MM-DD`）。`start_date` とペアで指定必須（`start_date <= end_date`）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
-| `sort_by` | string | × | `default` | ソート種別。指定可能値: `default`（ピン留め優先→締切昇順→作成日時降順）、`due_date_asc`（締切昇順）、`due_date_desc`（締切降順）、`created_at_desc`（作成日時降順）、`priority_desc`（優先度降順: `high` → `medium` → `low`）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`）。※`due_date_asc` および `due_date_desc` 指定時、締切日時未設定（`null`）のタスクは常に末尾に配置されます（`NULLS LAST`）。なお、すべてのソート指定において第一ソート条件で同一値となるタスクについては、確定的なページネーション順序を保証するためタイブレーク条件として `created_at DESC` → `id DESC` が適用されます。なお `view_type` 指定時に `sort_by` が明示的に指定された場合は、指定された `sort_by` のソート条件が最優先で適用されます（`sort_by` 省略時は `view_type` ごとのデフォルトソートが適用されます）。 |
+| `sort_by` | string | × | `default` | ソート種別。指定可能値: `default`（ピン留め優先→締切昇順→作成日時降順）、`due_date_asc`（締切昇順）、`due_date_desc`（締切降順）、`created_at_desc`（作成日時降順）、`priority_desc`（優先度降順: `high` → `medium` → `low`）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`）。※`due_date_asc` および `due_date_desc` 指定時、締切日時未設定（`null`）のタスクは常に末尾に配置されます（`NULLS LAST`）。なお、すべてのソート指定において第一ソート条件で同一値となるタスクについては、確定的なソート順序を保証するためタイブレーク条件として `created_at DESC` → `id DESC` が適用されます。なお `view_type` 指定時に `sort_by` が明示的に指定された場合は、指定された `sort_by` のソート条件が最優先で適用されます（`sort_by` 省略時は `view_type` ごとのデフォルトソートが適用されます）。 |
 
 ##### リクエスト評価順序
 1. **認証検証 (`401 Unauthorized`)**:
    ログインセッションの有効性を確認（未ログインまたはセッション無効時は 401 `UNAUTHORIZED`）。
 2. **リクエスト構文・クエリパラメータバリデーション (`400 Bad Request`)**:
-   クエリパラメータの型・形式（`page < 1` または非整数、`limit < 1` または `limit > 100` または非整数、`include_completed` への非 boolean 指定、`keyword` トリム後100文字超過、`priority`, `status`, `view_type`, `sort_by` パラメータへの定義外の無効な値指定、`view_type=near_deadline` と `status=completed` の同時指定、日付フォーマット `YYYY-MM-DD` 違反、`start_date` / `end_date` 片側のみ指定、`start_date` / `end_date` と `due_date` の同時指定、`start_date > end_date`、期間幅42日超過等）を検証。不備がある場合は 400 `BAD_REQUEST` を返却。
+   クエリパラメータの型・形式（`include_completed` への非 boolean 指定、`keyword` トリム後100文字超過、`priority`, `status`, `view_type`, `sort_by` パラメータへの定義外の無効な値指定、`view_type=near_deadline` と `status=completed` の同時指定、日付フォーマット `YYYY-MM-DD` 違反、`start_date` / `end_date` 片側のみ指定、`start_date` / `end_date` と `due_date` の同時指定、`start_date > end_date`、期間幅42日超過等）を検証。不備がある場合は 400 `BAD_REQUEST` を返却。
 
 ##### Response (200 OK)
 ```json
 {
-  "items": [
+  "tasks": [
     {
       "id": "tsk_1001",
       "user_id": "usr_987654321",
@@ -43,13 +41,7 @@
       "created_at": "2026-08-17T10:00:00+09:00",
       "updated_at": "2026-08-17T11:30:00+09:00"
     }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total_count": 45,
-    "total_pages": 3
-  }
+  ]
 }
 ```
 
@@ -57,34 +49,28 @@
 
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
-| `items` | array[object] | ○ | タスクオブジェクトの配列（検索・絞り込みに該当するタスクが0件の場合は空配列 `[]`） |
-| `items[].id` | string | ○ | タスクID（例: `tsk_1001`） |
-| `items[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
-| `items[].title` | string | ○ | タスクタイトル |
-| `items[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
-| `items[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
-| `items[].status` | string | ○ | ステータス（`not_started`, `in_progress`, `completed`） |
-| `items[].due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
-| `items[].is_pinned` | boolean | ○ | ピン留めフラグ |
-| `items[].created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
-| `items[].updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
-| `pagination` | object | ○ | ページネーション情報 |
-| `pagination.page` | integer | ○ | 現在のページ番号（1始まり） |
-| `pagination.limit` | integer | ○ | 1ページあたりの取得件数 |
-| `pagination.total_count` | integer | ○ | 検索・絞り込みに該当する総タスク件数 |
-| `pagination.total_pages` | integer | ○ | 全総ページ数 |
+| `tasks` | array[object] | ○ | タスクオブジェクトの配列（検索・絞り込みに該当するタスクが0件の場合は空配列 `[]`） |
+| `tasks[].id` | string | ○ | タスクID（例: `tsk_1001`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `tasks[].title` | string | ○ | タスクタイトル |
+| `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
+| `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
+| `tasks[].status` | string | ○ | ステータス（`not_started`, `in_progress`, `completed`） |
+| `tasks[].due_datetime` | string / null | ○ | 締切日時（ISO 8601 JST 形式。締切未設定時は `null`） |
+| `tasks[].is_pinned` | boolean | ○ | ピン留めフラグ |
+| `tasks[].created_at` | string | ○ | 作成日時（ISO 8601 JST 形式） |
+| `tasks[].updated_at` | string | ○ | 更新日時（ISO 8601 JST 形式） |
 
 ※締切日時が未設定のタスクの場合、`due_datetime` は `null` として返却されます。またコメントが未入力の場合、`comment` は空文字 `""` として返却されます。
-※通常一覧取得において、検索条件に合致する該当タスクが 0件（`total_count: 0`）の場合、`pagination` は `{"page": 1, "limit": <指定limit値>, "total_count": 0, "total_pages": 0}` として返却されます。
 ※ `sort_by` 省略時に `view_type` ごとに適用されるデフォルトソート順序は以下の通りです：
 - `high_priority`: 締切日時昇順（`due_datetime ASC NULLS LAST`） → 作成日時降順（`created_at DESC`）※ピン留めによる並び替えは行いません
 - `near_deadline`: 締切日時昇順（`due_datetime ASC`） → 作成日時降順（`created_at DESC`）
 - `pinned`: 締切日時昇順（`due_datetime ASC NULLS LAST`） → 作成日時降順（`created_at DESC`）
 
-※ `start_date` / `end_date` を指定したカレンダー期間取得時は、`due_datetime` が設定されているタスクのうち `start_date 00:00:00+09:00 <= due_datetime <= end_date 23:59:59+09:00` の範囲に該当するタスクのみが抽出返却されます（`due_datetime` が `null` のタスクは除外されます）。なお、`due_date` パラメータとの同時指定は不可となり、同時に指定された場合は 400 `BAD_REQUEST` を返却します。`start_date` / `end_date` 指定時に `view_type`, `priority`, `status`, `keyword` 等の絞り込みパラメータが併用された場合は、指定された期間内で該当する絞り込み条件を満たすタスクのみが一括返却されます。また、ページネーションが無効化されて期間内の全タスクが一括返却されるため、`pagination` オブジェクトは `page: 1`, `limit: total_count`（取得件数と同値）, `total_pages: 1` として返却されます（該当タスクが0件の場合は `limit: 0, total_count: 0, total_pages: 1`）。※ `start_date` / `end_date` 指定（カレンダー期間取得）時に `sort_by` が省略された場合のデフォルトソート順序は、`is_pinned DESC`（ピン留め優先） → `due_datetime ASC`（締切日時昇順） → `created_at DESC`（作成日時降順） → `id DESC`（タイブレーク）となります。
+※ `start_date` / `end_date` を指定したカレンダー期間取得時は、`due_datetime` が設定されているタスクのうち `start_date 00:00:00+09:00 <= due_datetime <= end_date 23:59:59+09:00` の範囲に該当するタスクのみが抽出返却されます（`due_datetime` が `null` のタスクは除外されます）。なお、`due_date` パラメータとの同時指定は不可となり、同時に指定された場合は 400 `BAD_REQUEST` を返却します。`start_date` / `end_date` 指定時に `view_type`, `priority`, `status`, `keyword` 等の絞り込みパラメータが併用された場合は、指定された期間内で該当する絞り込み条件を満たすタスクのみが一括返却されます。※ `start_date` / `end_date` 指定（カレンダー期間取得）時に `sort_by` が省略された場合のデフォルトソート順序は、`is_pinned DESC`（ピン留め優先） → `due_datetime ASC`（締切日時昇順） → `created_at DESC`（作成日時降順） → `id DESC`（タイブレーク）となります。
 
 ##### Errors
-- `400 Bad Request`: クエリパラメータ不正（page/limitの範囲・型違反、include_completedの非boolean指定、priority/status/view_type/sort_byの不正値指定、view_type=near_deadlineとstatus=completedの同時指定、日付フォーマット違反、start_date/end_dateとdue_dateの同時指定、片側期間指定、start_date > end_date、期間幅超過(42日超)等、code: `"BAD_REQUEST"`）
+- `400 Bad Request`: クエリパラメータ不正（include_completedの非boolean指定、priority/status/view_type/sort_byの不正値指定、view_type=near_deadlineとstatus=completedの同時指定、日付フォーマット違反、start_date/end_dateとdue_dateの同時指定、片側期間指定、start_date > end_date、期間幅超過(42日超)等、code: `"BAD_REQUEST"`）
 - `401 Unauthorized`: 未ログインまたはセッション無効（code: `"UNAUTHORIZED"`）
 
 ---
