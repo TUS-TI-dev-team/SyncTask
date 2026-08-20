@@ -1,5 +1,12 @@
 ### 3.1 認証・アカウント登録 (Auth)
 
+#### OTP API共通規則
+
+- クライアントが同じ用途の有効な `otp_session_id` を保持している場合はOTP入力画面へ復帰し、`request-otp` を呼び出しません。それでも `request-otp` が呼ばれ、対象メールアドレスまたは認証ユーザーに有効なOTPセッションが存在する場合、既存セッションを更新せず、新しいダミーセッションを作成して同一形式の `200 OK` を返します。
+- ダミーセッションは `OTP_SESSION.IS_DUMMY=true` を最終判定とします。`SIGNUP` と `PASSWORD_RESET` のダミーは `USER_ID` をNULL、`EMAIL_CHANGE` のダミーは所有者認可のため認証ユーザーIDを保持します。`PENDING_USERNAME`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULL、`PENDING_EMAIL`は正規と同様とし、OTP照合を成功させません。
+- 実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT+=1` とし、`503 Service Unavailable`（code: `OTP_DELIVERY_FAILED`）の `error.details` に再送用 `otp_session_id` を返します。失敗送信には60秒クールダウンを適用せず、クライアントは同じ用途の `resend-otp` を使用します。
+- 送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とします。初回送信、手動再送、5回照合失敗による自動再送を通じて5回連続で送信に失敗した場合、対象OTPセッションを物理削除し、`410 Gone`（code: `OTP_SESSION_INVALIDATED`）を返します。
+
 #### 3.1.1 `POST auth/register/request-otp`
 新規作成のアカウント情報の入力検証を行い、仮登録セッションおよびOTPを生成してメールを送信します。
 
@@ -40,14 +47,12 @@
 ##### リクエスト評価順序
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`username`, `email`, `password`）の有無、文字数・形式制約を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし）。
-2. **アクティブセッション・クールダウン検証 (`429 Too Many Requests`)**:
-   指定されたメールアドレスに対して既に有効な `active` OTPセッションが存在し、前回の発行から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`）を返却します。
-3. **アカウント列挙・Timing Attack 対策処理 (`200 OK`)**:
-   メールアドレスの登録有無（または有効なOTPセッションの存在有無）にかかわらず、一律で 1.0s ± 0.1s のレスポンス遅延を適用した上で `200 OK` を返却します（未登録時は新規OTP発行、既登録時または他ユーザーの有効OTPセッション存在時はダミー発行）。なおクールダウン期間（60秒）経過後に同一メールアドレスに対して再度 `request-otp` が呼び出された場合、DBの一意制約（`uq_otp_session_active_pending_email`）競合を回避するため、既存の `active` レコードの属性（`OTP_HASH`, `ATTEMPT_COUNT=0`, `SEND_COUNT+=1`, `LAST_SENT_AT`, `EXPIRES_AT` 等）を上書き更新して新OTPコードを発行・送信します。
+2. **既存OTPセッション検証・列挙対策 (`200 OK`)**:
+   指定メールに有効なOTPセッションがある場合は、経過時間にかかわらず既存レコードを更新せず、ダミーセッションを新規作成します。未登録かつ排他なしの場合だけ実OTPを発行し、通常・登録済み・予約中・重複要求のすべてで `1.0s ± 0.1s` 後に同一形式の `200 OK` を返します。
 
 ##### Errors
 - `400 Bad Request`: 入力バリデーション違反（文字数・形式違反等、code: `"BAD_REQUEST"`）
-- `429 Too Many Requests`: クールダウン期間中（前回の送信から60秒未満）の要求（code: `"OTP_RESEND_COOLDOWN"`）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、再送用 `otp_session_id` を返す）
 
 ---
 
@@ -100,7 +105,7 @@
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`, `otp`）の有無、および `otp` の形式（英数字8桁）を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし、試行回数 `ATTEMPT_COUNT` 加算なし）。
 2. **OTPセッション状態・目的・期限検証 (`400 Bad Request` / `410 Gone`)**:
-   指定された `otp_session_id` の存在、用途 `PURPOSE` が新規登録（`SIGNUP`）であること、ステータス（`active` であること）、および有効期限（`EXPIRES_AT` / `MAX_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在、用途 `PURPOSE` が新規登録（`SIGNUP`）であること、ステータス（`active` であること）、および有効期限（`OTP_EXPIRES_AT` / `SESSION_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 3. **OTP照合検証 (`400 BAD_REQUEST` / `422 OTP_REISSUED_DUE_TO_FAILURES`)**:
    入力された `otp` のハッシュ照合を実施します。
    - 不一致（試行1〜4回目）: 失敗回数（`ATTEMPT_COUNT`）を+1加算し、`400 Bad Request`（code: `"BAD_REQUEST"`、遅延 1.0s ± 0.1s）を返却します。
@@ -144,17 +149,17 @@
 | `masked_email` | string | ○ | マスク処理された送信先メールアドレス（例: `user**********@example.com`） |
 | `expires_in_seconds` | integer | ○ | 再発行されたOTPの有効期限（秒、デフォルト: 300） |
 
-※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `SIGNUP` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `MAX_EXPIRES_AT` の範囲内）へ更新延長します。
+※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `SIGNUP` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`OTP_EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `SESSION_EXPIRES_AT` の範囲内）へ更新延長します。
 
 ##### リクエスト評価順序
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`）の有無を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし）。
 2. **OTPセッション状態・目的・期限検証 (`400 Bad Request` / `410 Gone`)**:
-   指定された `otp_session_id` の存在、用途 `PURPOSE` が新規登録（`SIGNUP`）であること、ステータス（`active` であること）、および全体最大有効期限（`MAX_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・無効なセッションまたは失効時の場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在、用途 `PURPOSE` が新規登録（`SIGNUP`）であること、ステータス（`active` であること）、および全体最大有効期限（`SESSION_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・無効なセッションまたは失効時の場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 3. **クールダウン検証 (`429 Too Many Requests`)**:
    前回の送信（`LAST_SENT_AT`）から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`、遅延なし）を返却します。
 4. **OTP再発行・Timing Attack 対策処理 (`200 OK`)**:
-   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
+   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `OTP_EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
 
 ##### Errors
 - `400 Bad Request`: リクエストボディ不正・必須パラメータ欠落、または無効なセッション/STATUS非active指定（code: `"BAD_REQUEST"`）
@@ -285,14 +290,12 @@
 ##### リクエスト評価順序
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`email`）の有無・形式制約を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし）。
-2. **アクティブセッション・クールダウン検証 (`429 Too Many Requests`)**:
-   指定されたメールアドレスに対して既に有効な `active` OTPセッションが存在し、前回の発行から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`）を返却します。
-3. **アカウント列挙・Timing Attack 対策処理 (`200 OK`)**:
-   メールアドレスの登録有無（または有効なOTPセッションの存在有無）にかかわらず、一律で 1.0s ± 0.1s のレスポンス遅延を適用した上で `200 OK` を返却します（登録済み時は新規OTP発行、未登録時または他ユーザーの有効OTPセッション存在時はダミー発行）。なおクールダウン期間（60秒）経過後に同一メールアドレスに対して再度 `request-otp` が呼び出された場合、DBの一意制約（`uq_otp_session_active_pending_email`）競合を回避するため、既存の `active` レコードの属性（`OTP_HASH`, `ATTEMPT_COUNT=0`, `SEND_COUNT+=1`, `LAST_SENT_AT`, `EXPIRES_AT` 等）を上書き更新して新OTPコードを発行・送信します。
+2. **既存OTPセッション検証・列挙対策 (`200 OK`)**:
+   指定メールに有効なOTPセッションがある場合は、経過時間にかかわらず既存レコードを更新せず、ダミーセッションを新規作成します。有効アカウントが存在し排他なしの場合だけ実OTPを発行し、通常・未登録・削除済み・予約中・重複要求のすべてで `1.0s ± 0.1s` 後に同一形式の `200 OK` を返します。
 
 ##### Errors
 - `400 Bad Request`: 入力形式違反（code: `"BAD_REQUEST"`）
-- `429 Too Many Requests`: クールダウン期間中（前回の送信から60秒未満）の要求（code: `"OTP_RESEND_COOLDOWN"`）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、再送用 `otp_session_id` を返す）
 
 ---
 
@@ -325,13 +328,13 @@
 | :--- | :--- | :---: | :--- |
 | `message` | string | ○ | 処理結果メッセージ（例: `"OTP verified successfully."`） |
 
-※検証成功時、当該OTPセッション（`OTP_SESSION`）のステータスを `verified` に変更し、有効期限（`EXPIRES_AT`）を検証成功時点から15分間に延長します（この検証済みOTPセッションは後続の `POST auth/password-reset/reset` エンドポイントでのみ使用可能となります）。
+※検証成功時、当該OTPセッション（`OTP_SESSION`）のステータスを `verified` に変更し、全体有効期限（`SESSION_EXPIRES_AT`）を検証成功時点から15分間に延長します（この検証済みOTPセッションは後続の `POST auth/password-reset/reset` エンドポイントでのみ使用可能となります）。
 
 ##### リクエスト評価順序
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`, `otp`）の有無、および `otp` の形式（英数字8桁）を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし、試行回数 `ATTEMPT_COUNT` 加算なし）。
 2. **OTPセッション状態・目的・期限検証 (`400 Bad Request` / `410 Gone`)**:
-   指定された `otp_session_id` の存在、用途 `PURPOSE` がパスワードリセット（`PASSWORD_RESET`）であること、ステータス（`active` であること）、および有効期限（`EXPIRES_AT` / `MAX_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在、用途 `PURPOSE` がパスワードリセット（`PASSWORD_RESET`）であること、ステータス（`active` であること）、および有効期限（`OTP_EXPIRES_AT` / `SESSION_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 3. **OTP照合検証 (`400 BAD_REQUEST` / `422 OTP_REISSUED_DUE_TO_FAILURES`)**:
    入力された `otp` のハッシュ照合を実施します。
    - 不一致（試行1〜4回目）: 失敗回数（`ATTEMPT_COUNT`）を+1加算し、`400 Bad Request`（code: `"BAD_REQUEST"`、遅延 1.0s ± 0.1s）を返却します。
@@ -375,17 +378,17 @@
 | `masked_email` | string | ○ | マスク処理された送信先メールアドレス（例: `user**********@example.com`） |
 | `expires_in_seconds` | integer | ○ | 再発行されたOTPの有効期限（秒、デフォルト: 300） |
 
-※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `PASSWORD_RESET` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `MAX_EXPIRES_AT` の範囲内）へ更新延長します。
+※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `PASSWORD_RESET` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`OTP_EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `SESSION_EXPIRES_AT` の範囲内）へ更新延長します。
 
 ##### リクエスト評価順序
 1. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`）の有無を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし）。
 2. **OTPセッション状態・目的・期限検証 (`400 Bad Request` / `410 Gone`)**:
-   指定された `otp_session_id` の存在、用途 `PURPOSE` がパスワードリセット（`PASSWORD_RESET`）であること、ステータス（`active` であること）、および全体最大有効期限（`MAX_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・無効なセッションまたは失効時の場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在、用途 `PURPOSE` がパスワードリセット（`PASSWORD_RESET`）であること、ステータス（`active` であること）、および全体最大有効期限（`SESSION_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・無効なセッションまたは失効時の場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 3. **クールダウン検証 (`429 Too Many Requests`)**:
    前回の送信（`LAST_SENT_AT`）から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`、遅延なし）を返却します。
 4. **OTP再発行・Timing Attack 対策処理 (`200 OK`)**:
-   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
+   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `OTP_EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
 
 ##### Errors
 - `400 Bad Request`: リクエストボディ不正・必須パラメータ欠落、または無効なセッション/PURPOSE不一致/STATUS非active指定（code: `"BAD_REQUEST"`）
@@ -485,17 +488,15 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
    ログインセッションの有効性を確認（未ログイン時は 401 `UNAUTHORIZED`）、および `X-CSRF-Token` ヘッダーを検証（欠落・不一致時は 403 `FORBIDDEN`）。
 2. **リクエスト構文・入力バリデーション (`400 Bad Request` / `422 SAME_AS_CURRENT_EMAIL`)**:
    リクエストボディの `new_email` 形式を検証（不備時は 400 `BAD_REQUEST`）。現在のメールアドレスと同一かを検証（同一時は 422 `SAME_AS_CURRENT_EMAIL`）。
-3. **アクティブセッション・クールダウン検証 (`429 Too Many Requests`)**:
-   該当ユーザーに対して既に有効な `active` のメールアドレス変更用OTPセッションが存在し、前回の発行から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`）を返却します。
-4. **アカウント列挙・Timing Attack 対策処理 (`200 OK`)**:
-   指定された `new_email` の他ユーザーによる登録有無にかかわらず、一律で 1.0s ± 0.1s のレスポンス遅延を適用した上で `200 OK` を返却します（未登録時は新規OTP発行、既登録時はダミー発行）。なおクールダウン期間（60秒）経過後に同一ユーザーに対して再度 `request-otp` が呼び出された場合、DBの一意制約（`uq_otp_session_active_pending_email`）競合を回避するため、既存の `active` レコードの属性（`PENDING_EMAIL`, `OTP_HASH`, `ATTEMPT_COUNT=0`, `SEND_COUNT+=1`, `LAST_SENT_AT`, `EXPIRES_AT` 等）を上書き更新して新OTPコードを発行・送信します。
+3. **既存OTPセッション検証・列挙対策 (`200 OK`)**:
+   認証ユーザーに有効なメール変更OTPセッションがある場合は、経過時間にかかわらず既存レコードを更新せず、当該ユーザーを所有者とするダミーセッションを新規作成します。変更先が未使用かつ排他なしの場合だけ実OTPを発行し、通常・登録済み・予約中・重複要求のすべてで `1.0s ± 0.1s` 後に同一形式の `200 OK` を返します。
 
 ##### Errors
 - `400 Bad Request`: メールアドレス形式不正（code: `"BAD_REQUEST"`）
 - `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
 - `403 Forbidden`: CSRFトークン不正（code: `"FORBIDDEN"`）
 - `422 Unprocessable Entity`: 現在のメールアドレスと同一（code: `"SAME_AS_CURRENT_EMAIL"`）
-- `429 Too Many Requests`: クールダウン期間中（前回の送信から60秒未満）の要求（code: `"OTP_RESEND_COOLDOWN"`）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、再送用 `otp_session_id` を返す）
 
 ---
 
@@ -540,7 +541,7 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 2. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`, `otp`）の有無、および `otp` の形式（英数字8桁）を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし、試行回数 `ATTEMPT_COUNT` 加算なし）。
 3. **認可・OTPセッション状態・目的・期限検証 (`400 Bad Request` / `403 Forbidden` / `410 Gone`)**:
-   指定された `otp_session_id` の存在および現在ログイン中のユーザーに紐づくセッションであることを検証（他者所有の場合は 403 `FORBIDDEN`）。また、用途 `PURPOSE` がメールアドレス変更（`EMAIL_CHANGE`）であること、ステータス（`active` であること）、および有効期限（`EXPIRES_AT` / `MAX_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在および現在ログイン中のユーザーに紐づくセッションであることを検証（他者所有の場合は 403 `FORBIDDEN`）。また、用途 `PURPOSE` がメールアドレス変更（`EMAIL_CHANGE`）であること、ステータス（`active` であること）、および有効期限（`OTP_EXPIRES_AT` / `SESSION_EXPIRES_AT`）を検証します。セッション不在・`PURPOSE`不一致・失効・既に検証済み等の非 `active` ステータスの場合は、Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 4. **OTP照合検証 (`400 BAD_REQUEST` / `422 OTP_REISSUED_DUE_TO_FAILURES`)**:
    入力された `otp` のハッシュ照合を実施します。
    - 不一致（試行1〜4回目）: 失敗回数（`ATTEMPT_COUNT`）を+1加算し、`400 Bad Request`（code: `"BAD_REQUEST"`、遅延 1.0s ± 0.1s）を返却します。
@@ -587,7 +588,7 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 | `masked_email` | string | ○ | マスク処理された送信先メールアドレス（例: `new_**********@example.com`） |
 | `expires_in_seconds` | integer | ○ | 再発行されたOTPの有効期限（秒、デフォルト: 300） |
 
-※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `EMAIL_CHANGE` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `MAX_EXPIRES_AT` の範囲内）へ更新延長します。
+※Timing Attack 対策として、正常再送時（実メール送信時）およびダミーセッション再送時（実際のメール送信を行わない場合）を一貫して区別せず、一律でレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却します。また、リクエスト対象の `OTP_SESSION` の `PURPOSE` が `EMAIL_CHANGE` かつステータスが `active` であることを必須で検証します。再送処理成功時、対象の `OTP_SESSION` レコードにおいて新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、試行失敗回数（`ATTEMPT_COUNT`）を 0 にリセット、送信回数（`SEND_COUNT`）を +1 加算、直前送信日時（`LAST_SENT_AT`）を更新するとともに、有効期限（`OTP_EXPIRES_AT`）を再送信時点から5分間（全体最大有効期限 `SESSION_EXPIRES_AT` の範囲内）へ更新延長します。
 
 ##### リクエスト評価順序
 1. **認証・CSRF検証 (`401 Unauthorized` / `403 Forbidden`)**:
@@ -595,11 +596,11 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 2. **リクエスト構文・入力バリデーション (`400 Bad Request`)**:
    リクエストボディの JSON 形式、必須パラメータ（`otp_session_id`）の有無を検証します。不備がある場合は即座に `400 Bad Request`（code: `"BAD_REQUEST"`）を返却します（遅延なし）。
 3. **認可・OTPセッション状態・目的・期限検証 (`400 Bad Request` / `403 Forbidden` / `410 Gone`)**:
-   指定された `otp_session_id` の存在および現在ログイン中のユーザーに紐づくセッションであることを検証（他者所有の場合は 403 `FORBIDDEN`）。用途 `PURPOSE` がメールアドレス変更（`EMAIL_CHANGE`）であること、ステータス（`active` であること）、および全体最大有効期限（`MAX_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・失効時の場合は Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
+   指定された `otp_session_id` の存在および現在ログイン中のユーザーに紐づくセッションであることを検証（他者所有の場合は 403 `FORBIDDEN`）。用途 `PURPOSE` がメールアドレス変更（`EMAIL_CHANGE`）であること、ステータス（`active` であること）、および全体最大有効期限（`SESSION_EXPIRES_AT` 15分）を検証します。セッション不在・`PURPOSE`不一致・失効時の場合は Timing Attack 対策として一律 `1.0s ± 0.1s` の遅延を適用し `400 Bad Request`（code: `"BAD_REQUEST"`）または `410 Gone`（code: `"GONE"`）を返却します（ダミーセッション時含む）。
 4. **クールダウン検証 (`429 Too Many Requests`)**:
    前回の送信（`LAST_SENT_AT`）から60秒未満である場合は `429 Too Many Requests`（code: `"OTP_RESEND_COOLDOWN"`、遅延なし）を返却します。
 5. **OTP再発行・Timing Attack 対策処理 (`200 OK`)**:
-   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
+   新たな8桁OTPコード（`OTP_HASH`）を発行・保存し、`ATTEMPT_COUNT` を 0 にリセット、`SEND_COUNT` を +1 加算、`LAST_SENT_AT` および `OTP_EXPIRES_AT` を更新するとともに、一律 `1.0s ± 0.1s` のレスポンス遅延を適用した上で `200 OK` を返却します（ダミーセッション時含む）。
 
 ##### Errors
 - `400 Bad Request`: リクエストボディ不正・必須パラメータ欠落、または無効なセッション/PURPOSE不一致/STATUS非active指定（code: `"BAD_REQUEST"`）
