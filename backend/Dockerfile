@@ -8,4 +8,4 @@ RUN go mod download
 
 RUN go install github.com/air-verse/air@latest
 
-CMD ["air"]
+CMD ["air", "-c", ".air.toml"]
