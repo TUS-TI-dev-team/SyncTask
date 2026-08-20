@@ -7,6 +7,7 @@
 - 初期値は `GET /api/users/{user_id}` で取得する。ユーザー名変更は即時確定、メールアドレス変更は新アドレス宛OTPの検証成功時に確定する。
 - ユーザー名とメールアドレスは別APIで変更する。両方を変更する場合はユーザー名を先に確定し、続いてメール変更OTPを要求する。後続OTPの中断・失効時も確定済みユーザー名は戻さない。
 - 全API応答に `Cache-Control: no-store, no-cache, must-revalidate` と `Pragma: no-cache` を付与し、表示値はエスケープする。
+- フロントエンドが有効期限内のメール変更用 `otp_session_id` を保持している場合はOTP入力画面へ復帰し、`request-otp` を再実行しない。保持状態は変更完了・全体期限切れ・セッション失効時に削除する。
 
 ## 2.2 送信時の分岐
 
@@ -60,7 +61,7 @@ sequenceDiagram
 4. 新メールが有効な他ユーザーの `LOGIN_ACCOUNT.EMAIL` と重複するか、他手続きの有効な `OTP_SESSION.PENDING_EMAIL` に予約されていればダミー処理とする。
 5. 実処理では `PURPOSE='EMAIL_CHANGE'`、`USER_ID=<認証ユーザー>`、正規化済み `PENDING_EMAIL`、`STATUS='active'` の `OTP_SESSION` を作る。許可された26文字から8桁OTPを安全に生成し、ソルト付きハッシュのみ保存する。`OTP_EXPIRES_AT=発行時+5分`、`SESSION_EXPIRES_AT=初回発行時+15分`、`ATTEMPT_COUNT=0` とする。
 6. `uq_otp_session_active_pending_email` を排他の最終境界とし、一意制約競合時も重複を公開せずダミーへ切り替える。予約は検証確定または全体期限切れまで維持する。
-7. 実処理のみ新メールへOTPを送信する。ダミーではOTPを発行・送信せず、推測不能なダミーセッションIDを返す。
+7. 実処理のみ新メールへOTPを送信する。重複・予約中、または既存セッションがある状態で `request-otp` が再度呼ばれた場合は、既存セッションを更新せずダミーセッションを新規作成する。ダミーでは `IS_DUMMY=true` を最終判定とし、所有者認可用の `USER_ID=<認証ユーザー>` とマスク済みメールだけを保持し、`PENDING_USERNAME`、`PENDING_EMAIL`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULLとする。試行・送信回数、配信状態、個別・全体期限、作成日時は通常どおり保存する。
 8. 実・ダミーとも先頭4文字＋固定10文字マスク＋ドメインの `masked_email`、`expires_in_seconds=300` を同じ200で返し、応答を `1.0s ± 0.1s` に揃える。発行結果は `MAIL_AUTH_LOG` に `AUTH_TYPE='EMAIL_CHANGE'`、イベント、成否、`IS_DUMMY`、ユーザーID、対象メール、IP、日時を記録する。
 9. 手続き中は `LOGIN_ACCOUNT.EMAIL` を更新せず、旧メールをログイン識別子として維持する。
 
@@ -74,6 +75,8 @@ sequenceDiagram
 ### 手動再送
 
 `POST /api/auth/change-email/resend-otp` に `otp_session_id` を送る。認証・CSRF、入力、所有者、`PURPOSE='EMAIL_CHANGE'`、`STATUS='active'`、全体期限、60秒クールダウンの順に検証する。実セッションは新OTPを送信し、`OTP_HASH`、`OTP_EXPIRES_AT`、`LAST_SENT_AT` を更新、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。ダミーは送信せず同じ表示を返す。成功応答は双方 `1.0s ± 0.1s` とし、再送イベントを `MAIL_AUTH_LOG` に記録する。
+
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送を許可する。失敗送信には60秒クールダウンを適用しない。成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してプロフィール編集画面へ戻す。
 
 ### OTP検証
 
@@ -120,7 +123,7 @@ sequenceDiagram
     alt 全体15分期限切れ
         Backend->>DB: OTP_SESSION失効処理
         Backend-->>Frontend: 410 GONE
-        Frontend-->>User: 期限切れを通知<br/>アカウント作成画面／情報入力画面へ遷移
+        Frontend-->>User: 期限切れを通知<br/>プロフィール編集画面へ遷移
     else OTP不一致1〜4回
         Backend->>DB: ATTEMPT_COUNT加算
         Backend-->>Frontend: 遅延後400 BAD_REQUEST
@@ -146,7 +149,9 @@ sequenceDiagram
 | 401 `UNAUTHORIZED` | ログイン画面へ遷移 |
 | 403 `FORBIDDEN` | 操作中止。他者所有OTPの情報は表示しない |
 | 404 `NOT_FOUND` | 存在を秘匿した汎用エラー |
-| 410 `GONE` | 手続きを終了して期限切れを通知し、アカウント作成画面／情報入力画面へ遷移。レコードは15分ごとのCronでも物理削除 |
+| 410 `GONE` | 手続きを終了して期限切れを通知し、プロフィール編集画面へ遷移。レコードは15分ごとのCronでも物理削除 |
+| 410 `OTP_SESSION_INVALIDATED` | メール送信が5回連続で失敗したため手続きを終了し、プロフィール編集画面へ遷移 |
+| 503 `OTP_DELIVERY_FAILED` | メール送信失敗を表示し、同じセッションIDで再送を許可 |
 | 422 `SAME_AS_CURRENT_USERNAME` | 「現在のユーザー名と同じです」 |
 | 422 `SAME_AS_CURRENT_EMAIL` | 「現在のメールアドレスと同じです」 |
 | 422 `OTP_REISSUED_DUE_TO_FAILURES` | 「新しいOTPを再送しました」。入力回数をリセット |

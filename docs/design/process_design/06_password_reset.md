@@ -11,6 +11,8 @@
 
 画面遷移は「ログイン画面」→「メールアドレス入力画面」→「OTP入力画面」→「パスワード再設定画面」→「ログイン画面」とする。完了時に自動ログインは行わない。
 
+フロントエンドが有効期限内のパスワードリセット用 `otp_session_id` を保持している場合はOTP入力画面へ復帰し、`request-otp` を再実行しない。保持状態は手続き完了・全体期限切れ・セッション失効時に削除する。
+
 全API応答には `Content-Type: application/json; charset=utf-8`、`Cache-Control: no-store, no-cache, must-revalidate`、`Pragma: no-cache` を付与する。エラー本文は共通の `error.code`、`error.message`、`error.details`（対象なしも `[]`）形式とする。
 
 ## 6.2 OTP発行
@@ -24,10 +26,10 @@
 DBトランザクション内で、有効な `LOGIN_ACCOUNT` と `OTP_SESSION.PENDING_EMAIL` の排他状態を確認する。
 
 - 通常処理: 正規化メールに一致する未削除アカウントが存在し、同メールに `STATUS IN ('active', 'verified')` のOTPセッションがない場合、英大文字・数字の許可26文字から暗号学的乱数で8桁OTPを生成する。大文字小文字を区別せず照合できるよう正規化し、ソルト付きハッシュのみを `OTP_HASH` に保存する。`PURPOSE='PASSWORD_RESET'`、対象 `USER_ID`、`PENDING_EMAIL`、`STATUS='active'`、`ATTEMPT_COUNT=0`、`SEND_COUNT=0`、`LAST_SENT_AT=NOW()`、`OTP_EXPIRES_AT=NOW()+5分`、`SESSION_EXPIRES_AT=NOW()+15分` を保存し、コミット後にメール送信する。
-- ダミー処理: 未登録・論理削除済み・他の有効OTPセッションにより排他中の場合は、実OTPを発行・送信せず、推測困難なダミー `otp_session_id` を返す。ダミー状態でも検証回数、再送クールダウン、個別・全体期限を追跡し、通常処理と同じ応答系列を再現する。DBへ保持する場合は部分一意インデックスを侵害せず、本物のユーザーに結び付かない内部ダミー識別値で分離する。
+- ダミー処理: 未登録・論理削除済み・他の有効OTPセッションにより排他中、または既存セッションがある状態で `request-otp` が再度呼ばれた場合は、実OTPを発行・送信せず、新しい推測困難なダミー `otp_session_id` を `OTP_SESSION` に保存する。`IS_DUMMY=true` を最終判定とし、`USER_ID`、`PENDING_USERNAME`、`PENDING_EMAIL`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULL、マスク済みメール、試行・送信回数、配信状態、個別・全体期限、作成日時は通常どおり保持する。
 - 競合処理: 判定後にアカウント状態またはOTP排他が競合して一意制約に抵触した場合はロールバックしてダミー処理へ切り替え、内部状態を応答へ露出しない。
 
-`request-otp` は、有効OTPや60秒クールダウンの存在時も `429` を返さない。通常・ダミーとも `1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。`429 OTP_RESEND_COOLDOWN` は `otp_session_id` 付きの `resend-otp` のみに適用する。
+`request-otp` は、有効OTPや60秒クールダウンの存在時も `429` を返さない。既存セッションを更新せずダミー処理とし、通常・ダミーとも `1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。`429 OTP_RESEND_COOLDOWN` は `otp_session_id` 付きの `resend-otp` のみに適用する。
 
 ```json
 {
@@ -58,6 +60,8 @@ OTP画面ではメールの先頭4文字とドメインだけを表示し、そ�
 - `SESSION_EXPIRES_AT` 超過: セッションを物理削除し、遅延付き `410 GONE`。メールアドレス入力画面へ戻す。
 - `LAST_SENT_AT` から60秒未満: `429 OTP_RESEND_COOLDOWN`。画面は残り秒数を表示して再送ボタンを非活性にする。
 - 再送可能: 通常セッションでは新OTPを生成・送信し、ダミーでは送信しない。`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新し、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。通常・ダミーとも `1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。
+
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送操作を許可する。失敗送信には60秒クールダウンを適用しない。成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してメールアドレス入力画面へ戻す。
 
 再送回数に上限は設けないが、初回発行から15分の全体期限は延長しない。
 
@@ -160,4 +164,4 @@ sequenceDiagram
 - `ACCESS_LOG` に日時、UID（未特定時 `null`）、IP、メソッドを含むエンドポイント、OTPセッションID等の対象リソースIDを記録する。
 - メール認証ログは365日、APIアクセスログは90日保持し、毎日02:00 JST / 01:00 JSTのCronで期限超過分を物理削除する。
 - 完了時およびリクエスト中に検知した期限切れOTPは直ちに物理削除する。残存する期限切れOTPは15分ごとのCron（`*/15 * * * *`、JST）で物理削除する。
-- DB例外時はトランザクションをロールバックする。メール送信失敗は成功扱いにせず記録し、内部情報を含まない共通 `5xx` を返す。機微情報や一意制約名を応答・ログへ露出しない。
+- DB例外時はトランザクションをロールバックする。メール送信失敗には上記の再送可能化・連続失敗回数・5回到達時の補償削除を適用する。機微情報や一意制約名を応答・ログへ露出しない。

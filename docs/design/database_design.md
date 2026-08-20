@@ -79,12 +79,16 @@
 | 認証種別 | `PURPOSE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) |
 | ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 既存ユーザー識別用（パスワードリセット・メール変更時。新規登録時はNULL） |
 | 登録予定ユーザー名 | `PENDING_USERNAME` | `VARCHAR(20)` | アカウント作成時は登録予定値 |
-| 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` / `NOT NULL` | 認証対象 / 変更予定メールアドレス（登録・更新・認証要求時に一律小文字 `toLowerCase()` へ正規化して保存。新規登録・メール変更・パスワードリセットにおける重複排除・排他制御に利用） |
+| 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` / `NOT NULL` | 実セッションでは認証対象 / 変更予定メールアドレスを小文字へ正規化して保存し、重複排除・排他制御に利用。ダミーセッションでもメールアドレスの表示に必要なため上記と同様の方法にて保存する |
+| マスク済みメールアドレス | `MASKED_EMAIL` | `VARCHAR(255)` / `NOT NULL` | API応答表示用。先頭4文字とドメイン以外を固定10文字でマスクした値のみを保存し、ダミーセッションの再送応答にも利用 |
 | 登録予定パスワードハッシュ | `PENDING_PASSWORD_HASH` | `VARCHAR(255)` | メール変更時・パスワードリセット時はNULL<br>ソルト + ハッシュ化 |
-| OTPハッシュ | `OTP_HASH` | `VARCHAR(255)` / `NOT NULL` | 8桁英数字（大文字小文字区別なし）のハッシュ<br>ソルト + ハッシュ化 |
+| OTPハッシュ | `OTP_HASH` | `VARCHAR(255)` | 実セッションでは8桁英数字のソルト付きハッシュ。ダミーセッションではNULLとし、`IS_DUMMY` を先に判定して照合成功させない |
 | ステータス | `STATUS` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'active'` | `active`, `verified`, `expired`, `completed` |
+| ダミー処理区分 | `IS_DUMMY` | `BOOLEAN` / `NOT NULL, DEFAULT FALSE` | ダミーセッション判定の正本。`TRUE` のセッションではOTP生成・送信・照合成功・確定処理を禁止 |
 | 試行失敗回数 | `ATTEMPT_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 1つのOTPに対して最大5回（5回失敗時は自動再送・失効制御） |
 | 再送回数 | `SEND_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 手動/自動再送回数 |
+| 連続送信失敗回数 | `SEND_FAILED_COUNT` | `INT` / `NOT NULL, DEFAULT 0` | 初回送信・手動再送・自動再送を含む連続失敗回数。成功時に0へリセットし、5回到達時は対象セッションを物理削除 |
+| 配信状態 | `DELIVERY_STATUS` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'pending'` | `pending`, `sent`, `sendable`。送信失敗時は再試行可能な `sendable` とする。ダミーは実送信せず外部挙動のみ再現 |
 | 直前送信日時 | `LAST_SENT_AT` | `TIMESTAMPTZ` / `NOT NULL` | 直前の送信タイムスタンプ（60秒クールダウン判定用） |
 | OTP有効期限 | `OTP_EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 発行から5分 |
 | セッション全体有効期限 | `SESSION_EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 初回発行から15分間（パスワードリセットの検証成功時はその時点から15分間に延長。手続き全体の排他維持・失効上限） |
@@ -94,6 +98,12 @@
 > **OTPセッションのパージ方針**
 > - 新パスワード設定完了時やアカウント作成確定時等に直ちにDBから物理削除されます。
 > - 有効期限切れ（全体最大有効期限 `SESSION_EXPIRES_AT` 経過、またはステータスが `expired`, `completed` かつ `OTP_EXPIRES_AT` 経過）のレコードは、Cronジョブ（15分ごと / Cron: `*/15 * * * *` JST）にてDBから一括物理削除されます。
+> - ダミーセッションも `SESSION_EXPIRES_AT` 経過後に同じCronで削除します。メール送信が5回連続で失敗した実セッションはCronを待たず、補償処理で直ちに物理削除します。
+>
+> **ダミーセッションの制約**
+> - `OTP_SESSION_ID`、`PURPOSE`、`STATUS`、`IS_DUMMY`、試行・送信回数、配信状態、各期限、作成日時は通常どおり保存します。
+> - `PENDING_USERNAME`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULL、`PENDING_EMAIL` は正規と同様とします。`EMAIL_CHANGE` のみ所有者認可のため `USER_ID` に認証中ユーザーIDを保存し、`SIGNUP` と `PASSWORD_RESET` はNULLとします。
+> - `IS_DUMMY=TRUE` を最終判定とし、他のNULL値からダミーかどうかを推測してはなりません。
 
 ---
 
@@ -112,7 +122,7 @@
 | 更新日時 | `UPDATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | レコード更新日時 |
 
 > [!NOTE]
-> **保持期間・パージ方針**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1日（24時間）以上経過した不要レコードは、日次Cronジョブ（毎日 00:00 JST / Cron: `0 0 * * *`）にて物理削除します。
+> **保持期間・パージ方針**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1日（24時間）以上経過した不要レコードは、日次Cronジョブ（毎日 03:00 JST / Cron: `0 3 * * *`）にて物理削除します。
 
 ---
 
@@ -208,6 +218,25 @@ CREATE INDEX idx_otp_session_pending_email ON OTP_SESSION (PENDING_EMAIL, STATUS
 
 -- OTPセッションの15分間隔Cronパージ用（全体最大有効期限または失効レコードのクリーンアップ）
 CREATE INDEX idx_otp_session_purge ON OTP_SESSION (SESSION_EXPIRES_AT, STATUS, OTP_EXPIRES_AT);
+```
+
+ダミー対応のため `PENDING_EMAIL` と `OTP_HASH` の無条件NOT NULL制約は外しますが、実セッションまでNULLを許可しないよう次の条件付きCHECK制約を必須とします。
+
+```sql
+ALTER TABLE OTP_SESSION ADD CONSTRAINT chk_otp_session_real_required_values
+CHECK (IS_DUMMY OR (PENDING_EMAIL IS NOT NULL AND OTP_HASH IS NOT NULL));
+
+ALTER TABLE OTP_SESSION ADD CONSTRAINT chk_otp_session_signup_required_values
+CHECK (PURPOSE <> 'SIGNUP' OR IS_DUMMY OR (PENDING_USERNAME IS NOT NULL AND PENDING_PASSWORD_HASH IS NOT NULL));
+
+ALTER TABLE OTP_SESSION ADD CONSTRAINT chk_otp_session_email_change_owner
+CHECK (PURPOSE <> 'EMAIL_CHANGE' OR USER_ID IS NOT NULL);
+
+ALTER TABLE OTP_SESSION ADD CONSTRAINT chk_otp_session_delivery_status
+CHECK (DELIVERY_STATUS IN ('pending', 'sent', 'sendable'));
+
+ALTER TABLE OTP_SESSION ADD CONSTRAINT chk_otp_session_send_failed_count
+CHECK (SEND_FAILED_COUNT BETWEEN 0 AND 4);
 ```
 
 ### 7.3 レートリミット管理 (`LOGIN_IP_RATE_LIMIT`)

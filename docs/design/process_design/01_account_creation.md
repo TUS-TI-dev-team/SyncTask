@@ -10,6 +10,8 @@
 
 画面は「アカウント情報入力画面」から「OTP入力画面」へ遷移し、本登録成功後は自動ログイン状態でホーム画面へ遷移する。OTP画面には先頭4文字とドメイン以外を10文字固定幅で伏せたメールアドレス、OTPの残り有効時間、再送ボタン、および再送後60秒のカウントダウンを表示する。
 
+フロントエンドが有効期限内の新規登録用 `otp_session_id` を保持している場合は、アカウント情報入力画面を表示せずOTP入力画面へ復帰し、`request-otp` を再実行しない。保持状態は手続き完了・全体期限切れ・セッション失効時に削除する。
+
 全API応答には `Content-Type: application/json; charset=utf-8`、`Cache-Control: no-store, no-cache, must-revalidate`、`Pragma: no-cache` を付与する。エラー本文は共通の `error.code`、`error.message`、`error.details`（対象なしの場合も `[]`）形式とする。
 
 ## 1.2 登録情報送信・OTP発行
@@ -30,10 +32,10 @@
 入力検証通過後、DBトランザクション内で有効アカウントのメールアドレスと `OTP_SESSION.PENDING_EMAIL` を確認する。通常処理に進めるのは、正規化済みメールアドレスが有効な `LOGIN_ACCOUNT` に存在せず、かつ同メールアドレスに `STATUS IN ('active', 'verified')` のOTPセッションが存在しない場合だけとする。
 
 - 通常処理: `PURPOSE='SIGNUP'`、`STATUS='active'`、`ATTEMPT_COUNT=0`、`SEND_COUNT=0`、`LAST_SENT_AT=NOW()`、`OTP_EXPIRES_AT=NOW()+5分`、`SESSION_EXPIRES_AT=NOW()+15分` として `OTP_SESSION` を作成し、登録予定ユーザー名・正規化済みメールアドレス・登録予定パスワードハッシュ・OTPハッシュを保存する。コミット後にOTPメールを送信する。
-- ダミー処理: 登録済み、または他の有効OTPセッションにより排他中のメールアドレスでは、実OTPを発行・送信せず、推測困難なダミー `otp_session_id` を発行する。ダミー状態でも検証回数と全体期限を追跡し、通常処理と同じ応答系列を再現する。DBへ保持する場合は部分一意インデックス `uq_otp_session_active_pending_email` を侵害せず、本登録に利用できない内部ダミー識別値で通常セッションと分離する。対象メールは `MAIL_AUTH_LOG.EMAIL` に記録し、`IS_DUMMY=true` とする。
+- ダミー処理: 登録済み、他の有効OTPセッションにより排他中、または既存セッションがある状態で `request-otp` が再度呼ばれた場合は、実OTPを発行・送信せず、新しい推測困難なダミー `otp_session_id` を発行して `OTP_SESSION` に保存する。`IS_DUMMY=true` を最終判定とし、`USER_ID`、`PENDING_USERNAME`、`PENDING_EMAIL`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULL、マスク済みメール、試行・送信回数、配信状態、個別・全体期限、作成日時は通常どおり保持する。対象メールは `MAIL_AUTH_LOG.EMAIL` にだけ記録し、部分一意インデックスを侵害しない。
 - 競合処理: 判定後に同一メールアドレスのアカウント登録またはOTP作成が競合し、一意制約に抵触した場合はトランザクションをロールバックしてダミー処理へ切り替える。内部競合や登録状況をクライアントへ露出しない。
 
-有効OTPセッションが存在する場合や、その `LAST_SENT_AT` から60秒未満の場合を含め、`request-otp` では `429` を返さない。通常・ダミーとも `1.0s ± 0.1s` に応答時間を揃え、同一構造の `200 OK` を返す。`429 OTP_RESEND_COOLDOWN` は、発行済み `otp_session_id` を受け取る `resend-otp` にのみ適用する。
+有効OTPセッションの有無や `LAST_SENT_AT` からの経過時間にかかわらず、`request-otp` では `429` を返さない。既存セッションがある場合はそのセッションを更新せずダミー処理とし、通常・ダミーとも `1.0s ± 0.1s` に応答時間を揃えて同一構造の `200 OK` を返す。`429 OTP_RESEND_COOLDOWN` は、発行済み `otp_session_id` を受け取る `resend-otp` にのみ適用する。
 
 ```json
 {
@@ -83,6 +85,8 @@ Cookie値、OTP、パスワードハッシュ、CSRFトークンはログへ出�
 - 全体期限切れ: セッションを物理削除し `EXPIRED` を記録後、`1.0s ± 0.1s` 後に `410 GONE`。アカウント情報入力画面へ戻す。
 - `LAST_SENT_AT` から60秒未満: `429 OTP_RESEND_COOLDOWN`。残り秒数の間ボタンを非活性にする。
 - 再送可能: 通常セッションでは新OTPを生成・送信し、ダミーでは実送信しない。`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新し、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。`RESEND_REQUESTED` をダミー区分付きで記録し、`1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。
+
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送操作を許可する。失敗送信には60秒クールダウンを適用しない。送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してアカウント情報入力画面へ戻す。
 
 再送回数自体に上限は設けない。ただし初回発行から15分の `SESSION_EXPIRES_AT` は延長しない。
 
@@ -155,6 +159,6 @@ sequenceDiagram
 
 - 個別OTP期限は発行・再送から5分、手続きとメールアドレス排他の上限は初回発行から15分とする。再送で全体期限は延長しない。
 - リクエスト時に期限切れを検知した場合は即時に物理削除する。残存する期限切れOTPセッションは15分ごとのCron（`*/15 * * * *`、JST）で物理削除する。
-- メール送信失敗時は成功扱いにせず、発行状態と送信結果が不整合にならないよう失敗を記録する。クライアントへは内部情報を含まない共通 `5xx` を返す。
+- メール送信失敗時は成功扱いにせず、上記の再送可能化・連続失敗回数・5回到達時の補償削除を適用する。応答には再送に必要な `otp_session_id` 以外の内部情報を含めない。
 - DB例外時はトランザクションをロールバックし、パスワード、OTP、Cookie、ハッシュ値、詳細な一意制約名を応答やログへ露出しない。
 - `MAIL_AUTH_LOG` は日時、UID（新規登録では `null`）、対象メール、`SIGNUP`、IP、イベント、成否、ダミー区分を記録して365日保持する。`ACCESS_LOG` は日時、UID `null`、IP、エンドポイント、リソースIDを記録して90日保持する。期限超過分は所定の日次Cronで物理削除する。

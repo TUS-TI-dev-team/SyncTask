@@ -69,8 +69,8 @@ WHERE <primary_key> IN (SELECT <primary_key> FROM target_rows);
 WITH target_rows AS (
     SELECT OTP_SESSION_ID
     FROM OTP_SESSION
-    WHERE MAX_EXPIRES_AT < NOW()
-       OR (STATUS IN ('expired', 'completed') AND EXPIRES_AT < NOW())
+    WHERE SESSION_EXPIRES_AT < NOW()
+       OR (STATUS IN ('expired', 'completed') AND OTP_EXPIRES_AT < NOW())
     LIMIT :batch_size
 )
 DELETE FROM OTP_SESSION
@@ -106,7 +106,7 @@ WHERE SESSION_ID IN (SELECT SESSION_ID FROM target_rows);
 WITH target_rows AS (
     SELECT LOG_ID
     FROM ACCESS_LOG
-    WHERE CREATED_AT < NOW() - INTERVAL '90 days'
+    WHERE ACCESS_AT < NOW() - INTERVAL '90 days'
     LIMIT :batch_size
 )
 DELETE FROM ACCESS_LOG
@@ -125,7 +125,7 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
   WITH target_rows AS (
       SELECT LOG_ID
       FROM LOGIN_LOG
-      WHERE CREATED_AT < NOW() - INTERVAL '365 days'
+      WHERE ACCESS_AT < NOW() - INTERVAL '365 days'
       LIMIT :batch_size
   )
   DELETE FROM LOGIN_LOG
@@ -136,7 +136,7 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
   WITH target_rows AS (
       SELECT LOG_ID
       FROM MAIL_AUTH_LOG
-      WHERE CREATED_AT < NOW() - INTERVAL '365 days'
+      WHERE ACCESS_AT < NOW() - INTERVAL '365 days'
       LIMIT :batch_size
   )
   DELETE FROM MAIL_AUTH_LOG
@@ -147,7 +147,7 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
   - 削除成功時: `[INFO] Cleaned up total {count_login} login logs and {count_mail} mail auth logs.`
 
 ### 3-5. レートリミットクリーンアップ (`CLEANUP_RATE_LIMITS`)
-- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から1ヶ月(毎月1日)以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
+- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から30日以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
 - **実行頻度**: 毎日 03:00 (`0 0 1 * *` JST)
 - **クリーンアップ SQL**:
 ```sql
