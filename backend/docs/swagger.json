@@ -1,0 +1,53 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "SyncTask バックエンド API サーバー",
+        "title": "SyncTask API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/health-check": {
+            "get": {
+                "description": "サーバーの稼働状態を確認します（開発モード時のみ有効）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "ヘルスチェック",
+                "responses": {
+                    "200": {
+                        "description": "サーバー稼働中",
+                        "schema": {
+                            "$ref": "#/definitions/handler.HealthResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "handler.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message はヘルスチェックに関する補足メッセージです（例: \"healthy\"）",
+                    "type": "string",
+                    "example": "healthy"
+                },
+                "status": {
+                    "description": "Status はサーバーの現在のステータスを示します（例: \"ok\"）",
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        }
+    }
+}

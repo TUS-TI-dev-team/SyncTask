@@ -1,0 +1,36 @@
+basePath: /
+definitions:
+  handler.HealthResponse:
+    properties:
+      message:
+        description: 'Message はヘルスチェックに関する補足メッセージです（例: "healthy"）'
+        example: healthy
+        type: string
+      status:
+        description: 'Status はサーバーの現在のステータスを示します（例: "ok"）'
+        example: ok
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: SyncTask バックエンド API サーバー
+  title: SyncTask API
+  version: "1.0"
+paths:
+  /health-check:
+    get:
+      consumes:
+      - application/json
+      description: サーバーの稼働状態を確認します（開発モード時のみ有効）。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: サーバー稼働中
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: ヘルスチェック
+      tags:
+      - System
+swagger: "2.0"

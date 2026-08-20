@@ -1,15 +1,20 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"log"
 
+	"synctask/backend/router"
+)
+
+// @title SyncTask API
+// @version 1.0
+// @description SyncTask バックエンド API サーバー
+// @host localhost:8080
+// @BasePath /
 func main() {
-    router := gin.Default()
+	r := router.SetupRouter()
 
-    router.GET("/", func(c *gin.Context) {
-        c.JSON(200, gin.H{
-            "message": "Hello, World!",
-        })
-    })
-
-    router.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("サーバーの起動に失敗しました: %v", err)
+	}
 }
