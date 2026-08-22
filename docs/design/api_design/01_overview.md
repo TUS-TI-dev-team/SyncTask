@@ -14,8 +14,9 @@
 - **日時フォーマット**: ISO 8601 拡張形式・JSTタイムゾーン固定 (`YYYY-MM-DDTHH:mm:ss+09:00`)
 - **タイムアウト**: 30秒
 - **Cookie & セッション方式**:
-  - セッション管理には Cookie ベースセッションを採用します（Cookie名: `sync_task_sid`）。
-  - セッションCookie属性: `HttpOnly: true`, `SameSite: Lax`, `Path: /`, `Max-Age: 2592000` (30日間)。
+  - ログインセッション管理には Cookie ベースセッションを採用します（Cookie名: `sync_task_sid`）。
+  - ログインセッションCookie属性: `HttpOnly: true`, `SameSite: Lax`, `Path: /`, `Max-Age: 2592000` (30日間)。
+    - ただし、セッション期限は、APIアクセスの度に、そこから30日間延長されます（スライディング有効期限）。
   - `Secure`: 本番環境（HTTPS）では常時 `Secure: true`。ローカル開発環境（HTTP）では環境変数（`COOKIE_SECURE=false`）により切替可能とします。
   - OTP有効期限は発行から5分（300秒）、手続き全体の最大有効期限は15分です。
   - **OTPセッション破棄（戻る・キャンセル時）**: OTP入力画面からの離脱や「戻る」ボタン押下時は、クライアント側の `otp_session_id` を破棄するとともに、セッション破棄API（`POST auth/otp-session/cancel`）を呼び出してサーバー側 `OTP_SESSION` を即座に物理削除（無効化）します。
