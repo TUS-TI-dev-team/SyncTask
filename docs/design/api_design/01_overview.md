@@ -41,7 +41,7 @@
 ### 1.4 セキュリティ & CSRF・アカウント列挙対策
 - **CSRF対策**:
   - Cookieベースの認証を行うため、**認証を必要とするすべての状態変更リクエスト（`POST`, `PUT`, `PATCH`, `DELETE`）** において CSRFトークン（`X-CSRF-Token` ヘッダー）の検証を必須とします（未認証のログイン・会員登録・パスワードリセット等のリクエスト、および `auth/otp-session/cancel` 等の未認証可能エンドポイントを除く）。
-  - CSRFトークンは **Double Submit Cookie 方式** にて管理します。ログイン成功時（`auth/login`）およびアカウント新規登録完了時（`auth/register/verify-otp`）に、レスポンスヘッダーで `Set-Cookie: XSRF-TOKEN=<csrf_token>; SameSite=Lax; Path=/; Max-Age=2592000`（JavaScriptから読み取り可能な `HttpOnly=false`。本番HTTPS環境では `Secure` 属性付与）を発行します。
+  - CSRFトークンは **Double Submit Cookie 方式** にて管理します。ログイン成功時（`auth/login`）およびアカウント新規登録完了時（`auth/register/verify-otp`）に、レスポンスヘッダーで `Set-Cookie: XSRF-TOKEN=<csrf_token>; SameSite=Lax; Path=/; Max-Age=2592000`（JavaScriptから読み取り可能な `HttpOnly=false`）を発行します。本番HTTPS環境では `Secure` 属性を付与、開発・テスト環境では付与しないものとします。
   - クライアント側 JavaScript で Cookie から CSRF トークンを取得し、状態変更リクエストの `X-CSRF-Token` ヘッダーに付与して送信します。
 - **アカウント列挙防止 (User Enumeration 対策)**:
   - 新規登録（`auth/register/request-otp`）、パスワードリセット（`auth/password-reset/request-otp`）、メールアドレス変更（`auth/change-email/request-otp`）および各 OTP 再送（`resend-otp`）において、指定されたメールアドレスの登録有無、他ユーザーとの重複、または**他ユーザーの有効なOTPセッション期間中（手続き中）** の持続にかかわらず、**正常成功時・ダミー発行時を一貫して区別せずレスポンス遅延（1.0s ± 0.1s）を適用した上で `200 OK` を返却**します。これにより、エラーコード・レスポンス構造・応答時間のあらゆる差異からメールアドレスの登録状況が推測されることを完全に防止します。
@@ -83,7 +83,6 @@
 | :--- | :--- | :---: | :--- |
 | `error.code` | string | ○ | エラーコード（例: `BAD_REQUEST`, `UNAUTHORIZED`, `SAME_AS_CURRENT_PASSWORD` 等） |
 | `error.message` | string | ○ | ユーザー向け汎用エラーメッセージ |
-| `error.otp_session_id` | string | - | 認証コード送信失敗時（`503 OTP_DELIVERY_FAILED`）等に返却される再送用OTPセッションID（オプショナル） |
 | `error.details` | array | ○ | フィールド単位のバリデーション詳細情報リスト。対象フィールドが存在しないエラー応答の場合は空配列 `[]` を返却（`null` やキー省略は不可） |
 | `error.details[].field` | string | ○ | エラー対象のフィールド名またはクエリパラメータ名。リクエストデータがネストされたオブジェクト構造を持つ場合は `recurring_rule.due_time` のようにドット記法（`親オブジェクト.子フィールド`）で指定し、`GET` リクエスト等のクエリパラメータバリデーション違反時は対象のクエリパラメータ名（例: `priority`, `due_date`, `start_date`）を指定 |
 | `error.details[].message` | string | ○ | フィールド固有のエラーメッセージ |

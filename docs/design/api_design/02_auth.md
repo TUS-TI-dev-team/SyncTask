@@ -4,7 +4,7 @@
 
 - クライアントが同じ用途の有効な `otp_session_id` を保持している場合はOTP入力画面へ復帰し、`request-otp` を呼び出しません。それでも `request-otp` が呼ばれ、対象メールアドレスまたは認証ユーザーに有効なOTPセッションが存在する場合、既存セッションを更新せず、新しいダミーセッションを作成して同一形式の `200 OK` を返します。
 - ダミーセッションは `OTP_SESSION.IS_DUMMY=true` を最終判定とします。`SIGNUP` と `PASSWORD_RESET` のダミーは `USER_ID` をNULL、`EMAIL_CHANGE` のダミーは所有者認可のため認証ユーザーIDを保持します。`PENDING_USERNAME`、`PENDING_EMAIL`、`PENDING_PASSWORD_HASH`、`OTP_HASH` はNULLとし、OTP照合を成功させません（メールアドレス表示には `MASKED_EMAIL` を使用）。
-- 実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT+=1` とし、`503 Service Unavailable`（code: `OTP_DELIVERY_FAILED`）の `error.otp_session_id` に再送用 `otp_session_id` を返します（`error.details` は空配列 `[]`）。失敗送信には60秒クールダウンを適用せず、クライアントは同じ用途の `resend-otp` を使用します。
+- 実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT+=1` とし、`503 Service Unavailable`（code: `OTP_DELIVERY_FAILED`）を返します（`error.details` は空配列 `[]`）。失敗送信には60秒クールダウンを適用せず、OTP再送時は同一の `otp_session_id` を維持して既存レコードを直接更新（`otp_session_id` の変更は行わない）して再送処理を行います。
 - 送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とします。初回送信、手動再送、5回照合失敗による自動再送を通じて5回連続で送信に失敗した場合、対象OTPセッションを物理削除し、`410 Gone`（code: `OTP_SESSION_INVALIDATED`）を返します。
 
 #### 3.1.1 `POST auth/register/request-otp`
@@ -54,7 +54,7 @@
 
 ##### Errors
 - `400 Bad Request`: 入力バリデーション違反（文字数・形式違反等、code: `"BAD_REQUEST"`）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 
@@ -173,7 +173,7 @@
 - `400 Bad Request`: リクエストボディ不正・必須パラメータ欠落、または無効なセッション/STATUS非active指定（code: `"BAD_REQUEST"`）
 - `410 Gone`: 全体最大有効期限（初回発行から15分）切れ（code: `"GONE"`）、またはメール送信5回連続失敗に伴うセッション失効（code: `"OTP_SESSION_INVALIDATED"`）
 - `429 Too Many Requests`: クールダウン期間中（前回の送信から60秒未満）の再送要求（code: `"OTP_RESEND_COOLDOWN"`）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 
@@ -308,7 +308,7 @@
 
 ##### Errors
 - `400 Bad Request`: 入力形式違反（code: `"BAD_REQUEST"`）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 
@@ -413,7 +413,7 @@
 - `400 Bad Request`: リクエストボディ不正・必須パラメータ欠落、または無効なセッション/PURPOSE不一致/STATUS非active指定（code: `"BAD_REQUEST"`）
 - `410 Gone`: 全体最大有効期限（初回発行から15分）切れ（code: `"GONE"`）、またはメール送信5回連続失敗に伴うセッション失効（code: `"OTP_SESSION_INVALIDATED"`）
 - `429 Too Many Requests`: クールダウン期間中（60秒未満）の再送要求（code: `"OTP_RESEND_COOLDOWN"`）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 
@@ -518,7 +518,7 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 - `401 Unauthorized`: 未ログイン（code: `"UNAUTHORIZED"`）
 - `403 Forbidden`: CSRFトークン不正（code: `"FORBIDDEN"`）
 - `422 Unprocessable Entity`: 現在のメールアドレスと同一（code: `"SAME_AS_CURRENT_EMAIL"`）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 
@@ -567,6 +567,8 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 | `user.email` | string | ○ | 変更後の新メールアドレス |
 | `user.created_at` | string | ○ | アカウント作成日時（ISO 8601 JST 形式） |
 | `user.updated_at` | string | ○ | メールアドレス更新日時（ISO 8601 JST 形式） |
+
+※指定された `otp_session_id` に紐づくユーザーID（`OTP_SESSION.USER_ID`）が現在認証中のログインユーザーIDと一致していることを検証します。検証成功後、アカウントのメールアドレスを更新し、旧メールアドレス宛てに変更完了通知メールを送信（非同期処理）します。同時に、使用済みの手続き用OTPセッション（`OTP_SESSION`）および当該ユーザーのすべての既存ログインセッション（`LOGIN_SESSION`）をDBから直ちに物理削除してCookieを消去し、新メールアドレスでの再ログインを要求します。
 
 ##### リクエスト評価順序
 1. **認証・CSRF検証 (`401 Unauthorized` / `403 Forbidden`)**:
@@ -649,7 +651,7 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 - `403 Forbidden`: 他ユーザー所有の `otp_session_id` 指定（認可不一致）または CSRFトークン不正（code: `"FORBIDDEN"`）
 - `410 Gone`: 初回発行から15分経過（code: `"GONE"`）、またはメール送信5回連続失敗に伴うセッション失効（code: `"OTP_SESSION_INVALIDATED"`）
 - `429 Too Many Requests`: クールダウン期間中（60秒未満、code: `"OTP_RESEND_COOLDOWN"`、`Retry-After` ヘッダー付与）
-- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`、`error.otp_session_id` に再送用セッションIDを返却）
+- `503 Service Unavailable`: 実メール送信失敗（code: `"OTP_DELIVERY_FAILED"`）
 
 ---
 

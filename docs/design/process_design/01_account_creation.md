@@ -92,7 +92,7 @@ Cookie値、OTP、パスワードハッシュ、CSRFトークンはログへ出�
 - `LAST_SENT_AT` から60秒未満: `429 OTP_RESEND_COOLDOWN`。残り秒数の間ボタンを非活性にする。
 - 再送可能: 通常セッションでは新OTPを生成・送信し、ダミーでは実送信しない。`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新し、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。`RESEND_REQUESTED` をダミー区分付きで記録し、`1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。
 
-実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送操作を許可する。失敗送信には60秒クールダウンを適用しない。送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してアカウント情報入力画面へ戻す。
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` を返却する（同一の `otp_session_id` レコードを直接更新するためセッションIDは変更されず、保持している `otp_session_id` で再送操作が可能）。失敗送信には60秒クールダウンを適用しない。送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してアカウント情報入力画面へ戻す。
 
 再送回数自体に上限は設けない。ただし初回発行から15分の `SESSION_EXPIRES_AT` は延長しない。
 

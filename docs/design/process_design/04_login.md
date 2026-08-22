@@ -32,7 +32,7 @@
 | --- | --- | --- | --- |
 | `400 / BAD_REQUEST` | JSON不正、必須項目欠落、型・文字数違反 | なし | インラインエラーまたはフォーム上部アラート |
 | `401 / UNAUTHORIZED` | 未登録、削除済み、パスワード不一致、メール単位ロック中 | `1.0s ± 0.1s` | 一律「メールアドレスまたはパスワードが正しくありません」 |
-| `429 / RATE_LIMIT_EXCEEDED` | IP単位遮断中（直近5分間に30回失敗で15分遮断） | `1.0s ± 0.1s` | 登録有無を示さない試行制限メッセージ |
+| `429 / RATE_LIMIT_EXCEEDED` | IP単位遮断中（5分間のインターバルを開けずに30回連続で失敗で15分遮断） | `1.0s ± 0.1s` | 登録有無を示さない試行制限メッセージ |
 | `500 / INTERNAL_SERVER_ERROR` | サーバー内部エラー | - | 汎用エラー |
 
 エラーは共通形式 `error.code`, `error.message`, `error.details` を用い、詳細なしでも `details: []` とする。登録・削除状態を本文や応答時間から判別できる情報は返さない。
@@ -62,7 +62,6 @@ sequenceDiagram
             else IP遮断なし
                 Backend->>DB: 正規化メールで有効アカウント検索
                 alt メール単位ロック中
-                    Backend->>Backend: ダミーハッシュ照合（Timing Attack対策）
                     Backend->>DB: LOGIN_LOG、ACCESS_LOG記録、IP失敗加算
                     Backend-->>Frontend: 401（1.0s ± 0.1s、アカウント存在秘匿）
                 else 照合可能

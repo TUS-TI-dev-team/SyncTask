@@ -14,7 +14,7 @@
 | 現在値との差分 | 処理 |
 | :--- | :--- |
 | ユーザー名のみ | `PUT users/{user_id}` 成功後、プロフィール表示画面へ遷移 |
-| メールアドレスのみ | 「決定」ボタン押下時に全セッション失効・再ログインの確認ダイアログを表示。キャンセル時はAPIを呼ばず編集画面に留まる。確定後、`POST auth/change-email/request-otp` を実行してOTP入力画面へ遷移 |
+| メールアドレスのみ | `POST auth/change-email/request-otp` を実行してOTP入力画面へ遷移 |
 | 両方 | 「決定」ボタン押下時に全セッション失効・再ログインの確認ダイアログを表示。キャンセル時はユーザー名更新も含め一切のAPIを実行せず編集画面に留まる。確定後、まず `PUT users/{user_id}` を実行。ユーザー名更新成功後、直ちに `POST auth/change-email/request-otp` を実行 |
 | 差分なし | 更新せず、現在値と同一であることを表示 |
 
@@ -38,7 +38,9 @@ sequenceDiagram
         Frontend-->>User: インラインエラー表示
     else 入力正常
         Frontend->>Backend: PUT users/{user_id}<br/>Cookie + X-CSRF-Token
-        Backend->>DB: 認証・CSRF・現在値検証
+        Backend->>Backend: CSRF認証
+        Backend->>DB: 認証、現在値取得
+        Backend->>Backend: 現在値との一致検査
         alt 検証エラー（同一ユーザー名等）
             Backend-->>Frontend: 4xx エラー応答
             Frontend-->>User: エラーメッセージ表示
@@ -52,14 +54,11 @@ sequenceDiagram
 
 ## 2.3.1 ユーザー名・メールアドレス両方変更時の処理詳細
 
-1. ユーザーが「決定」ボタンを押下した際、メールアドレスに変更があるため、**いかなるAPIも実行する前にまず全セッション失効・再ログインの確認ダイアログを表示する**。
-2. ダイアログで「キャンセル」された場合、ユーザー名変更APIも呼び出さずにプロフィール編集画面の入力状態を維持する。
-3. ダイアログで「確定」された場合、以下の順序で連続実行する：
-   1. **ステップ1 (ユーザー名更新)**: `PUT users/{user_id}` を実行。
-      - 失敗した場合: エラーメッセージを表示し、メール変更APIは呼び出さずに編集画面に留まる。
-   2. **ステップ2 (メール変更OTP要求)**: ステップ1成功後、直ちに `POST auth/change-email/request-otp` を実行。
-      - 成功した場合: OTP入力画面へ遷移する。
-      - 失敗した場合（送信失敗503、サーバーエラー500等）: 「ユーザー名は更新されましたが、認証メールの送信に失敗しました。プロフィール画面から再度メール変更をお試しください」といったトースト通知を表示し、プロフィール表示画面へ遷移する（すでに確定したユーザー名はロールバックしない）。
+1. **ステップ1 (ユーザー名更新)**: `PUT users/{user_id}` を実行。
+    - 失敗した場合: エラーメッセージを表示し、メール変更APIは呼び出さずに編集画面に留まる。
+2. **ステップ2 (メール変更OTP要求)**: ステップ1成功後、直ちに `POST auth/change-email/request-otp` を実行。
+    - 成功した場合: OTP入力画面へ遷移する。
+    - 失敗した場合（送信失敗503、サーバーエラー500等）: 「ユーザー名は更新されましたが、認証メールの送信に失敗しました。プロフィール画面から再度メール変更をお試しください」といったトースト通知を表示し、プロフィール表示画面へ遷移する（すでに確定したユーザー名はロールバックしない）。
 
 ```mermaid
 sequenceDiagram
@@ -119,7 +118,7 @@ sequenceDiagram
 #### 手動再送
 `POST auth/change-email/resend-otp` に `otp_session_id` を送る。認証・CSRF、入力、所有者、`PURPOSE='EMAIL_CHANGE'`、`STATUS='active'`、全体期限、60秒クールダウンの順に検証する。実セッションは新OTPを送信し、`OTP_HASH`、`OTP_EXPIRES_AT`、`LAST_SENT_AT` を更新、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。ダミーは送信せず同じ表示を返す。成功応答は双方 `1.0s ± 0.1s` とし、再送イベントを `MAIL_AUTH_LOG` に記録する。
 
-実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送を許可する。失敗送信には60秒クールダウンを適用しない。成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してプロフィール編集画面へ戻す。
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` を返却する（同一の `otp_session_id` レコードを直接更新するためセッションIDは変更されず、保持している `otp_session_id` で再送操作が可能）。失敗送信には60秒クールダウンを適用しない。成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してプロフィール編集画面へ戻す。
 
 #### セッション破棄・キャンセル
 ユーザーが「戻る」ボタンを押下したり画面から離脱した場合、クライアント側の `otp_session_id` を破棄するとともに、`POST auth/otp-session/cancel` を呼び出す。
@@ -179,9 +178,24 @@ sequenceDiagram
             User->>Frontend: 「再送信」ボタン押下
             Frontend->>Backend: POST auth/change-email/resend-otp
             Backend->>DB: 所有者・用途・状態・期限・回数確認
-            alt 再送成功
-                Backend->>MailServer: 新OTP送信
-                Backend-->>Frontend: 200 OK
+            alt 60秒未満クールダウン
+                Backend-->>Frontend: 429 OTP_RESEND_COOLDOWN
+                Frontend-->>User: カウントダウン表示・再送ボタン非活性
+            else 再送可能
+                Backend->>DB: OTP更新・試行回数リセット
+                opt 実処理
+                    Backend->>MailServer: 新OTP送信
+                    alt メール送信失敗 (1〜4回目)
+                        Backend-->>Frontend: 503 OTP_DELIVERY_FAILED
+                        Frontend-->>User: エラー表示（再送ボタンで再試行可能）
+                    else 連続5回送信失敗
+                        Backend->>DB: OTP_SESSION物理削除
+                        Backend-->>Frontend: 410 OTP_SESSION_INVALIDATED
+                        Frontend-->>User: プロフィール編集画面へ遷移
+                    else 送信成功
+                        Backend-->>Frontend: 遅延後200 OK
+                    end
+                end
             end
         else OTP入力
             User->>Frontend: OTP入力
