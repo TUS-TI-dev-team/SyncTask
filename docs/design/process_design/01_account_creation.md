@@ -4,13 +4,14 @@
 
 | 処理 | API | 認証 / CSRF | 正常応答 |
 | :--- | :--- | :--- | :--- |
-| 登録情報送信・OTP発行 | `POST /api/auth/register/request-otp` | 不要 | `200 OK` |
-| OTP検証・本登録 | `POST /api/auth/register/verify-otp` | 不要 | `201 Created` |
-| OTP手動再送 | `POST /api/auth/register/resend-otp` | 不要 | `200 OK` |
+| 登録情報送信・OTP発行 | `POST auth/register/request-otp` | 不要 | `200 OK` |
+| OTP検証・本登録 | `POST auth/register/verify-otp` | 不要 | `201 Created` |
+| OTP手動再送 | `POST auth/register/resend-otp` | 不要 | `200 OK` |
+| OTPセッション破棄・キャンセル | `POST auth/otp-session/cancel` | 不要 | `200 OK` |
 
 画面は「アカウント情報入力画面」から「OTP入力画面」へ遷移し、本登録成功後は自動ログイン状態でホーム画面へ遷移する。OTP画面には先頭4文字とドメイン以外を10文字固定幅で伏せたメールアドレス、OTPの残り有効時間、再送ボタン、および再送後60秒のカウントダウンを表示する。
 
-フロントエンドが有効期限内の新規登録用 `otp_session_id` を保持している場合は、アカウント情報入力画面を表示せずOTP入力画面へ復帰し、`request-otp` を再実行しない。保持状態は手続き完了・全体期限切れ・セッション失効時に削除する。
+フロントエンドが有効期限内の新規登録用 `otp_session_id` を保持している場合は、アカウント情報入力画面を表示せずOTP入力画面へ復帰し、`request-otp` を再実行しない。手続き完了・全体期限切れ・セッション失効時、またはユーザーによる戻る・キャンセル操作（`POST auth/otp-session/cancel` 呼び出し）時に保持状態を削除する。
 
 全API応答には `Content-Type: application/json; charset=utf-8`、`Cache-Control: no-store, no-cache, must-revalidate`、`Pragma: no-cache` を付与する。エラー本文は共通の `error.code`、`error.message`、`error.details`（対象なしの場合も `[]`）形式とする。
 
@@ -22,7 +23,7 @@
 
 - ユーザー名: 2〜20文字、半角英数字のみ。同名ユーザーは許可する。
 - メールアドレス: 有効な形式、255文字以下。
-- パスワード: 8〜128文字で、英大文字・英小文字・数字・許可記号の4種類中3種類以上を含む。
+- パスワード: 8〜128文字で、英大文字・英小文字・数字・許可記号（全32種、API共通仕様1.4節準拠）の4種類中3種類以上を含む。
 - ユーザー名またはメールアドレスのローカル部が4文字以上の場合、それらを大文字小文字を区別せずパスワード内に含まない。
 
 平文パスワードおよび平文OTPはDB・アプリケーションログへ記録しない。登録予定パスワードとOTPは、それぞれ独立したソルトを使用してハッシュ化する。
@@ -41,7 +42,8 @@
 {
   "otp_session_id": "otp_sess_a1b2c3d4e5",
   "masked_email": "user**********@example.com",
-  "expires_in_seconds": 300
+  "expires_in_seconds": 300,
+  "cooldown_seconds": 60
 }
 ```
 
@@ -55,7 +57,10 @@
 2. OTPの前後の空白を除去して大文字へ正規化する。対象セッションを更新ロック付きで取得し、`PURPOSE='SIGNUP'`、`STATUS='active'`、個別期限 `OTP_EXPIRES_AT`、全体期限 `SESSION_EXPIRES_AT` を検証する。
 3. セッション不在・用途不一致・非activeは遅延付き `400 BAD_REQUEST`、期限切れは遅延付き `410 GONE` とする。全体期限切れでは対象OTPセッションを物理削除し、`MAIL_AUTH_LOG` へ `EVENT_TYPE='EXPIRED'` を記録する。フロントエンドはアカウント情報入力画面へ戻す。
 4. OTP不一致1〜4回目は `ATTEMPT_COUNT` を1加算し、`VERIFY_FAILED` を記録して、`1.0s ± 0.1s` 後に `400 BAD_REQUEST` を返す。
-5. 不一致5回目は、通常セッションでは新OTPを生成・送信し、`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新、`SEND_COUNT` を1加算して `ATTEMPT_COUNT=0` とする。ダミーでは生成・送信せず同等の状態遷移だけを行う。いずれも `AUTO_RESEND` を記録し、`1.0s ± 0.1s` 後に `422 OTP_REISSUED_DUE_TO_FAILURES` を返して「新しいOTPを再送しました」と表示する。この時点から60秒クールダウンを開始する。
+5. 不一致5回目は、通常セッションでは新OTPを生成・送信し、`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新、`SEND_COUNT` を1加算して `ATTEMPT_COUNT=0` とする。ダミーでは生成・送信せず同等の状態遷移だけを行う。いずれも `AUTO_RESEND` を記録する。
+   - 実メール送信に成功した場合（ダミー含む）: `1.0s ± 0.1s` 後に `422 OTP_REISSUED_DUE_TO_FAILURES` を返して画面上に「入力試行回数の上限に達したため、新しい認証コードを再送信しました」と表示し、入力欄をクリアして60秒クールダウンを開始する。
+   - 実メール送信に失敗した場合（1〜4回目の送信失敗）: `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT+=1` とし、`503 Service Unavailable`（code: `"OTP_DELIVERY_FAILED"`）を返却する。画面側では「新しい認証コードの送信に失敗しました。再送信ボタンから再試行してください」と案内する。
+   - 自動再送を含めて5回連続で送信失敗となった場合: 対象セッションを物理削除し、`410 Gone`（code: `"OTP_SESSION_INVALIDATED"`）を返却してアカウント情報入力画面へ戻す。
 6. OTP一致時は人工遅延を加えず、本登録トランザクションへ進む。ダミーセッションは一致成功しない。
 
 ### 1.3.2 本登録トランザクション
@@ -77,18 +82,24 @@
 
 Cookie値、OTP、パスワードハッシュ、CSRFトークンはログへ出力しない。
 
-## 1.4 OTP手動再送
+## 1.4 OTP手動再送・セッションキャンセル
 
-`POST /api/auth/register/resend-otp` は `otp_session_id` を必須とする。構文・必須検証違反は遅延なしの `400 BAD_REQUEST` とする。その後、対象を更新ロックし、`PURPOSE='SIGNUP'`、`STATUS='active'`、`SESSION_EXPIRES_AT` 内であることを確認する。
+### 1.4.1 OTP手動再送
+`POST auth/register/resend-otp` は `otp_session_id` を必須とする。構文・必須検証違反は遅延なしの `400 BAD_REQUEST` とする。その後、対象を更新ロックし、`PURPOSE='SIGNUP'`、`STATUS='active'`、`SESSION_EXPIRES_AT` 内であることを確認する。
 
 - セッション不在・用途不一致・非active: `1.0s ± 0.1s` 後に `400 BAD_REQUEST`。
 - 全体期限切れ: セッションを物理削除し `EXPIRED` を記録後、`1.0s ± 0.1s` 後に `410 GONE`。アカウント情報入力画面へ戻す。
 - `LAST_SENT_AT` から60秒未満: `429 OTP_RESEND_COOLDOWN`。残り秒数の間ボタンを非活性にする。
 - 再送可能: 通常セッションでは新OTPを生成・送信し、ダミーでは実送信しない。`OTP_HASH`、`OTP_EXPIRES_AT=min(NOW()+5分, SESSION_EXPIRES_AT)`、`LAST_SENT_AT` を更新し、`ATTEMPT_COUNT=0`、`SEND_COUNT=SEND_COUNT+1` とする。`RESEND_REQUESTED` をダミー区分付きで記録し、`1.0s ± 0.1s` 後に同一構造の `200 OK` を返す。
 
-実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` と同じ `otp_session_id` を返して再送操作を許可する。失敗送信には60秒クールダウンを適用しない。送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してアカウント情報入力画面へ戻す。
+実メール送信に失敗した場合は `DELIVERY_STATUS='sendable'`、`SEND_FAILED_COUNT=SEND_FAILED_COUNT+1` とし、`503 OTP_DELIVERY_FAILED` を返却する（同一の `otp_session_id` レコードを直接更新するためセッションIDは変更されず、保持している `otp_session_id` で再送操作が可能）。失敗送信には60秒クールダウンを適用しない。送信成功時は `DELIVERY_STATUS='sent'`、`SEND_FAILED_COUNT=0` とする。連続5回目の失敗では対象セッションを物理削除し、`410 OTP_SESSION_INVALIDATED` を返してアカウント情報入力画面へ戻す。
 
 再送回数自体に上限は設けない。ただし初回発行から15分の `SESSION_EXPIRES_AT` は延長しない。
+
+### 1.4.2 OTPセッション破棄・キャンセル
+ユーザーが「戻る」ボタンを押下したり画面から離脱した場合、クライアント側の `otp_session_id` を破棄するとともに、`POST auth/otp-session/cancel` を呼び出す。
+- サーバー側は対象の `OTP_SESSION` を特定し、`MAIL_AUTH_LOG` に `AUTH_TYPE='SIGNUP'`、`EVENT_TYPE='CANCELLED'` を記録した上で、`OTP_SESSION` レコードを DB から直ちに物理削除する。
+- 処理完了後は遅延なしで `200 OK`（`{"message": "OTP session cancelled successfully."}`）を返却する。
 
 ## 1.5 全体シーケンス
 
@@ -101,7 +112,7 @@ sequenceDiagram
     participant Mail as Mail Server
 
     User->>FE: 登録情報を入力して送信
-    FE->>BE: POST /api/auth/register/request-otp
+    FE->>BE: POST auth/register/request-otp
     BE->>BE: 正規化・一括バリデーション
     alt 入力不正
         BE-->>FE: 400 BAD_REQUEST
@@ -119,8 +130,14 @@ sequenceDiagram
     end
 
     loop 全体期限内
-        alt 手動再送
-            FE->>BE: POST /api/auth/register/resend-otp
+        alt 戻る・キャンセル操作
+            User->>FE: 「戻る」ボタン押下
+            FE->>BE: POST auth/otp-session/cancel
+            BE->>DB: MAIL_AUTH_LOG(CANCELLED)記録 & OTP_SESSION物理削除
+            BE-->>FE: 200 OK
+            FE-->>User: アカウント情報入力画面
+        else 手動再送
+            FE->>BE: POST auth/register/resend-otp
             alt 60秒未満
                 BE-->>FE: 429 OTP_RESEND_COOLDOWN
             else 再送可能
@@ -131,7 +148,7 @@ sequenceDiagram
                 BE-->>FE: 遅延付き200
             end
         else OTP入力
-            FE->>BE: POST /api/auth/register/verify-otp
+            FE->>BE: POST auth/register/verify-otp
             BE->>DB: OTP_SESSIONをロックして検証
             alt 不一致1〜4回目
                 BE->>DB: ATTEMPT_COUNT加算
@@ -140,8 +157,15 @@ sequenceDiagram
                 BE->>DB: OTP更新・試行回数リセット
                 opt 通常セッション
                     BE->>Mail: 新OTP自動送信
+                    alt メール送信失敗 (1〜4回目)
+                        BE-->>FE: 503 OTP_DELIVERY_FAILED
+                    else 連続5回送信失敗
+                        BE->>DB: OTP_SESSION物理削除
+                        BE-->>FE: 410 OTP_SESSION_INVALIDATED
+                    else 送信成功
+                        BE-->>FE: 遅延付き422 OTP_REISSUED_DUE_TO_FAILURES
+                    end
                 end
-                BE-->>FE: 遅延付き422 OTP_REISSUED_DUE_TO_FAILURES
             else 期限切れ
                 BE->>DB: OTP_SESSION物理削除
                 BE-->>FE: 遅延付き410 GONE
@@ -162,3 +186,4 @@ sequenceDiagram
 - メール送信失敗時は成功扱いにせず、上記の再送可能化・連続失敗回数・5回到達時の補償削除を適用する。応答には再送に必要な `otp_session_id` 以外の内部情報を含めない。
 - DB例外時はトランザクションをロールバックし、パスワード、OTP、Cookie、ハッシュ値、詳細な一意制約名を応答やログへ露出しない。
 - `MAIL_AUTH_LOG` は日時、UID（新規登録では `null`）、対象メール、`SIGNUP`、IP、イベント、成否、ダミー区分を記録して365日保持する。`ACCESS_LOG` は日時、UID `null`、IP、エンドポイント、リソースIDを記録して90日保持する。期限超過分は所定の日次Cronで物理削除する。
+

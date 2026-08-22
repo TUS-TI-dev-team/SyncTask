@@ -2,6 +2,7 @@
 
 #### 3.3.1 `GET tasks`
 タスク一覧を取得します。クエリパラメータにより、通常一覧、優先タスク・締切間近・ピン留めビュー、検索絞り込み、カレンダー表示用期間取得に対応します。
+※本APIは条件に合致するタスク全件を一括返却します。画面（UI）側でのページネーション（1ページ20件表示）は、取得したタスク配列をもとにクライアントサイドで分割制御を行います。ホーム画面においては、フロントエンドが選択中のタブに応じて `view_type=high_priority`、`view_type=near_deadline`、`view_type=pinned` のAPIリクエストを発行し、20件単位のページ分割制御およびページネーションUI操作を行います。
 
 - **認証**: 必須（Cookie）
 
@@ -10,11 +11,11 @@
 | パラメータ名 | 型 | 必須 | デフォルト | 説明 |
 | :--- | :--- | :---: | :--- | :--- |
 | `view_type` | string | × | - | ビュー指定: `high_priority`（優先高）, `near_deadline`（72時間以内/期限超過。`include_completed` の指定に関わらず常に完了タスクは除外。※`status=completed` との同時指定はパラメータ競合として 400 Bad Request）, `pinned`（ピン留めのみ）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
-| `include_completed`| boolean | × | 通常: `false`<br>カレンダー: `true` | 完了タスクを含めるか（`true` / `false`）。`true` または `false` 以外の文字列・数値が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却。通常一覧時はデフォルト `false`、`start_date` / `end_date` 指定（カレンダー表示）時はデフォルト `true`。なお `status` が明示指定された場合は本パラメータは無視されます |
-| `keyword` | string | × | - | タスク名およびコメントの部分一致検索（Case-Insensitive、前後の空白文字（半角・全角スペース、タブ、改行）をトリム処理。トリム後のキーワードが100文字を超える場合は 400 Bad Request（code: `"BAD_REQUEST"`）。SQLワイルドカード特殊文字 % や _ や \ はリテラルエスケープして部分一致を検索。未入力またはトリム後空文字の場合はキーワードによる絞り込みを行わない） |
+| `include_completed`| boolean | × | 通常/due_date: `false`<br>カレンダー: `true` | 完了タスクを含めるか（`true` / `false`）。`true` または `false` 以外の文字列・数値が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却。通常一覧時および `due_date` 指定時はデフォルト `false`、`start_date` / `end_date` 指定（カレンダー表示）時はデフォルト `true`。なお `status` が明示指定された場合は本パラメータは無視されます |
+| `keyword` | string | × | - | タスク名およびコメントの部分一致検索（日本語同一視: 英大文字/小文字、日本語全角/半角（NFKC正規化）、ひらがな/カタカナを同一視。アプリケーション層で入力キーワードを小文字化・NFKC正規化・ひらがな→カタカナ変換した上で、`TASK.SEARCH_TEXT` に対する部分一致検索（`ILIKE` / `pg_trgm`）を実行。前後の空白文字（半角・全角スペース、タブ、改行）をトリム処理。トリム後のキーワードが100文字を超える場合は 400 Bad Request（code: `"BAD_REQUEST"`）。SQLワイルドカード特殊文字 % や _ や \ はリテラルエスケープ。未入力またはトリム後空文字時は絞り込みを行わない） |
 | `priority` | string | × | - | 優先度絞り込み: `high`, `medium`, `low`。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
 | `status` | string | × | - | ステータス絞り込み: `not_started`, `in_progress`, `completed`。明示指定時は `include_completed` の指定を無視して指定ステータスを最優先適用（※`view_type=near_deadline` との同時指定は 400 Bad Request）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`） |
-| `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。指定日当日の `00:00:00+09:00 <= due_datetime <= 23:59:59+09:00` の全タスク、および指定日より過去 `due_datetime < 00:00:00+09:00` の未完了タスク（`status != 'completed'`）を抽出対象とし、過去の完了済みタスクは常に除外。締切日時未設定 `null` のタスクは除外。未指定時は絞り込みを行わない。※`start_date` / `end_date` との同時指定は不可） |
+| `due_date` | string | × | - | 締切日絞り込み（`YYYY-MM-DD`。抽出ロジック: `include_completed=true` の場合は指定日当日の全タスク［未完了＋完了］および指定日より過去の未完了タスク［`status != 'completed'`］を抽出対象とし、過去の完了済みタスクは常に除外。`include_completed=false`［デフォルト］の場合は指定日当日の未完了タスクおよび指定日より過去の未完了タスクを抽出対象とし、当日・過去を問わずすべての完了タスクを除外。締切日時未設定 `null` のタスクは除外。未指定時は絞り込みを行わない。※`start_date` / `end_date` との同時指定は不可） |
 | `start_date` | string | × | - | カレンダー表示用: グリッド取得開始日（`YYYY-MM-DD`）。`end_date` とペアで指定必須。最大許容期間幅は 42日間（6週間）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
 | `end_date` | string | × | - | カレンダー表示用: グリッド取得終了日（`YYYY-MM-DD`）。`start_date` とペアで指定必須（`start_date <= end_date`）。※`due_date` との同時指定は不可（同時指定時は 400 Bad Request） |
 | `sort_by` | string | × | `default` | ソート種別。指定可能値: `default`（ピン留め優先→締切昇順→作成日時降順）、`due_date_asc`（締切昇順）、`due_date_desc`（締切降順）、`created_at_desc`（作成日時降順）、`priority_desc`（優先度降順: `high` → `medium` → `low`）。定義外の値指定時は 400 Bad Request（code: `"BAD_REQUEST"`）。※`due_date_asc` および `due_date_desc` 指定時、締切日時未設定（`null`）のタスクは常に末尾に配置されます（`NULLS LAST`）。なお、すべてのソート指定において第一ソート条件で同一値となるタスクについては、確定的なソート順序を保証するためタイブレーク条件として `created_at DESC` → `id DESC` が適用されます。なお `view_type` 指定時に `sort_by` が明示的に指定された場合は、指定された `sort_by` のソート条件が最優先で適用されます（`sort_by` 省略時は `view_type` ごとのデフォルトソートが適用されます）。 |
@@ -30,8 +31,8 @@
 {
   "tasks": [
     {
-      "id": "tsk_1001",
-      "user_id": "usr_987654321",
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "課題レポート提出",
       "comment": "第5章の要約を含むこと\n参考文献を記載",
       "priority": "high",
@@ -50,8 +51,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `tasks` | array[object] | ○ | タスクオブジェクトの配列（検索・絞り込みに該当するタスクが0件の場合は空配列 `[]`） |
-| `tasks[].id` | string | ○ | タスクID（例: `tsk_1001`） |
-| `tasks[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
 | `tasks[].title` | string | ○ | タスクタイトル |
 | `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -76,7 +77,7 @@
 ---
 
 #### 3.3.2 `POST tasks`
-新規タスクを作成します。単一タスク作成に加え、期間と曜日を指定した毎週タスクの即時一括生成（最大100件）に対応します。
+新規タスクを作成します。単一タスク作成に加え、期間と曜日を指定した毎週タスクの即時一括生成（最大100件）に対応します。タスク作成時、タイトルおよびコメントから検索用正規化文字列（小文字化＋NFKC正規化＋ひらがな→カタカナ変換）を生成し、`TASK.SEARCH_TEXT` カラムに自動保存します。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
@@ -137,8 +138,8 @@
   "created_count": 10,
   "tasks": [
     {
-      "id": "tsk_2001",
-      "user_id": "usr_987654321",
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "週次ゼミ発表準備",
       "comment": "進捗スライド作成",
       "priority": "medium",
@@ -158,8 +159,8 @@
 | :--- | :--- | :---: | :--- |
 | `created_count` | integer | ○ | 作成されたタスク件数（単一作成時は `1`、繰り返し一括作成時は作成数） |
 | `tasks` | array[object] | ○ | 作成されたタスクオブジェクトの配列 |
-| `tasks[].id` | string | ○ | タスクID（例: `tsk_2001`） |
-| `tasks[].user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
 | `tasks[].title` | string | ○ | タスクタイトル |
 | `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -185,7 +186,7 @@
 ---
 
 #### 3.3.3 `GET tasks/{task_id}`
-指定されたタスクの詳細情報を取得します。
+指定されたタスクの詳細情報を取得します。タスク一覧画面やカレンダー日付詳細ポップアップからの「タスク編集ポップアップ」展開時、および直接アクセス時に最新のタスク詳細情報を取得するために利用されます。
 
 - **認証**: 必須（Cookie）
 - **Path Parameters**:
@@ -201,8 +202,8 @@
 ```json
 {
   "task": {
-    "id": "tsk_1001",
-    "user_id": "usr_987654321",
+    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "課題レポート提出",
     "comment": "第5章の要約を含むこと",
     "priority": "high",
@@ -220,8 +221,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `task` | object | ○ | 詳細取得されたタスクオブジェクト |
-| `task.id` | string | ○ | タスクID（例: `tsk_1001`） |
-| `task.user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `task.id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
 | `task.title` | string | ○ | タスクタイトル |
 | `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -240,7 +241,7 @@
 ---
 
 #### 3.3.4 `PATCH tasks/{task_id}`
-タスク情報を部分更新します。リクエストボディに含まれるフィールドのみが更新対象となります（ステータス変更 `status` やピン留め `is_pinned` の単体更新含む）。
+タスク情報を部分更新します。リクエストボディに含まれるフィールドのみが更新対象となります（ステータス変更 `status` やピン留め `is_pinned` の単体更新含む）。タイトル（`title`）またはコメント（`comment`）が更新された場合は、バックエンドで検索用正規化文字列（小文字化＋NFKC正規化＋ひらがな→カタカナ変換）を再生成し、`TASK.SEARCH_TEXT` カラムを自動更新します。
 
 - **認証**: 必須（Cookie）
 - **Headers**: `X-CSRF-Token: <token>`
@@ -266,7 +267,7 @@
   "is_pinned": true
 }
 ```
-※ステータスのみを変更する場合は `{"status": "completed"}`、ピン留めのみを変更する場合は `{"is_pinned": true}` のように、更新対象のフィールドのみを指定して送信可能です。なお、更新対象フィールドが一つも指定されていない空リクエストボディ `{}` が送信された場合、変更を行わずに `200 OK` と現在のタスク情報を返却します。また、非 Null 許容フィールド（`title`, `priority`, `status`, `is_pinned`）に対して明示的に `null`（例: `{"title": null}`, `{"status": null}`）が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却します。リクエストボディに読み取り専用フィールド（`id`, `user_id`, `created_at`, `updated_at`）が含まれる場合は更新対象外として無視されます。
+※ステータスのみを変更する場合は `{"status": "completed"}`、ピン留めのみを変更する場合は `{"is_pinned": true}` のように、更新対象のフィールドのみを指定して送信可能です。なお、更新対象フィールドが一つも指定されていない空リクエストボディ `{}` が送信された場合、変更を行わずに `200 OK` と現在のタスク情報を返却します。また、非 Null 許容フィールド（`title`, `priority`, `status`, `is_pinned`）に対して明示的に `null`（例: `{"title": null}`, `{"status": null}`）が指定された場合は 400 Bad Request（code: `"BAD_REQUEST"`）を返却します。リクエストボディに読み取り専用フィールド（`id`, `user_id`, `created_at`, `updated_at`）が含まれる場合は更新対象外として無視されます。なお、`title` または `comment` が更新された場合、バックエンドで検索用正規化文字列（小文字化＋NFKC正規化＋ひらがな→カタカナ変換）を再生成し、`TASK.SEARCH_TEXT` カラムを自動更新します。
 
 ##### Request Body フィールド定義
 
@@ -283,8 +284,8 @@
 ```json
 {
   "task": {
-    "id": "tsk_1001",
-    "user_id": "usr_987654321",
+    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "title": "課題レポート提出（修正版）",
     "comment": "参考文献の追記完了",
     "priority": "high",
@@ -302,8 +303,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `task` | object | ○ | 更新後のタスクオブジェクト |
-| `task.id` | string | ○ | タスクID（例: `tsk_1001`） |
-| `task.user_id` | string | ○ | 所有ユーザーID（例: `usr_987654321`） |
+| `task.id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
 | `task.title` | string | ○ | タスクタイトル |
 | `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
