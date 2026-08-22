@@ -1,6 +1,6 @@
 # Technology Stack (技術スタック)
 
-本ドキュメントでは、 SyncTask プロジェクトにおいて採用されている技術スタック、選定理由、アーキテクチャ構成、および開発・運用環境を定義します。
+本ドキュメントでは、SyncTask プロジェクトにおいて採用されている技術スタック、選定理由、アーキテクチャ構成、および開発・運用環境を定義します。
 
 ---
 
@@ -52,7 +52,9 @@ graph TD
 | --- | --- | --- | --- |
 | **言語** | [Go](https://go.dev/) | `1.26.1` | 高い実行速度、軽量なメモリ使用量、強力な並行処理能力 (Goroutine) |
 | **Web フレームワーク** | [Gin](https://gin-gonic.com/) | `v1.12.0` | 高速で軽量な HTTP ルーティング、ミドルウェアサポート、レスポンス処理の容易さ |
-| **バリデーション** | `go-playground/validator` | `v10.30.3` | リクエストボディやパラメータの厳密かつ宣言的なバリデーション |
+| **バリデーション** | `go-playground/validator` | `v10.30.3` | リクエストボディやパラメータの厳格かつ宣言的なバリデーション |
+| **CORS ミドルウェア** | `gin-contrib/cors` | - | 環境変数 `FRONTEND_URL` に基づくクロスオリジン制御、認証情報（Credentials）送受信、プリフライト（OPTIONS）制御、`Access-Control-Expose-Headers: Retry-After` 出力 |
+| **ジョブスケジューラ** | `robfig/cron/v3` | `v3.0.1` | 定期パージバッチ（OTP・セッション・ログ・レートリミット削除）の定期実行制御（JST基準・バックエンドプロセス内常駐スケジューラ。PostgreSQL Advisory Lock［`pg_try_advisory_lock` / `db.Conn`］と連携した水平スケール時の安全な多重起動防止制御を含む） |
 | **開発環境** | [Air](https://github.com/air-verse/air) | - | バックエンド Go コードの変更検知と自動再ビルド (Hot Reload) |
 
 ---

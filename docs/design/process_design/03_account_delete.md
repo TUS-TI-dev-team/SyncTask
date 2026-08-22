@@ -60,16 +60,17 @@ sequenceDiagram
                         Backend-->>Frontend: 401 REAUTH_FAILED<br/>1.0s ± 0.1s遅延
                         Frontend-->>User: 再認証エラーを表示
                     else パスワード不一致（5回目）
-                        Backend->>DB: REAUTH_FAILED_COUNTをリセット<br/>操作中のLOGIN_SESSIONを物理削除
+                        Backend->>DB: REAUTH_FAILED_COUNTを0へリセット<br/>REAUTH_LAST_FAILED_ATをNULLへ初期化<br/>操作中のLOGIN_SESSIONを物理削除
                         Backend-->>Frontend: 401 SESSION_DESTROYED<br/>Cookie消去、1.0s ± 0.1s遅延
                         Frontend-->>User: ログイン画面へ遷移
                     else パスワード一致
                         Backend->>DB: トランザクション開始
-                        Backend->>DB: REAUTH_FAILED_COUNTを0へリセット
+                        Backend->>DB: REAUTH_FAILED_COUNTを0へリセット<br/>REAUTH_LAST_FAILED_ATをNULLへ初期化
                         Backend->>DB: 所有TASKおよび関連データを物理削除
                         Backend->>DB: 対象ユーザーのアクティブなOTP_SESSIONを物理削除
                         Backend->>DB: 対象ユーザーの全LOGIN_SESSIONを物理削除
                         Backend->>DB: LOGIN_ACCOUNTを論理削除<br/>IS_DELETED=true, DELETED_AT=NOW()<br/>EMAIL=deleted_USER_ID_EMAIL形式へ退避
+                        Backend->>DB: ACCESS_LOGを記録
                         Backend->>DB: トランザクションをコミット
                         Backend-->>Frontend: 200 OK、Cookie消去
                         Frontend-->>User: ログイン画面へ遷移
@@ -88,13 +89,13 @@ API設計で定める次の順序で評価する。前段の検証でエラー�
 2. リクエストボディが正しいJSONであり、文字列型の `password` が入力されていることを検証する。この段階の不備では再認証失敗回数を加算しない。
 3. パスパラメータの `user_id` とセッションの `USER_ID` が一致し、未削除の対象アカウントが存在することを確認する。不一致または不存在は、存在有無を秘匿するため `404 NOT_FOUND` とする。この段階の不備でも再認証失敗回数を加算しない。
 4. 入力パスワードと `LOGIN_ACCOUNT.PASSWORD_HASH` を安全なハッシュ照合で再認証する。
-5. 再認証成功時は `REAUTH_FAILED_COUNT` を0へリセットし、削除処理を単一DBトランザクションで実行する。途中で失敗した場合は全処理をロールバックし、タスクのみ削除済み、またはアカウントのみ論理削除済みとなる部分完了を防ぐ。
+5. 再認証成功時は `REAUTH_FAILED_COUNT = 0`、`REAUTH_LAST_FAILED_AT = NULL` へ初期化リセットし、削除処理を単一DBトランザクションで実行する。途中で失敗した場合は全処理をロールバックし、タスクのみ削除済み、またはアカウントのみ論理削除済みとなる部分完了を防ぐ。
 
 ### 再認証失敗時
 
 - 失敗ごとに `LOGIN_ACCOUNT.REAUTH_FAILED_COUNT` を加算し、`REAUTH_LAST_FAILED_AT` を現在日時へ更新する。
-- 1〜4回目は `401 REAUTH_FAILED` を返し、画面上のインラインエラーまたはアラートバナーに再認証失敗を表示する。
-- 5回目は `REAUTH_FAILED_COUNT` を0へリセットし、操作中の `LOGIN_SESSION` のみを物理削除する。他端末・他ブラウザのセッションはこの失敗処理では削除しない。
+- 1〜4回目は `401 REAUTH_FAILED` を返し、画面上のインラインエラーに「パスワードが正しくありません」と表示し、入力欄の値をクリアして再入力を促す（※アカウント列挙・推測攻撃防止のため残試行回数は画面表示しない）。
+- 5回目は `REAUTH_FAILED_COUNT` を 0 へリセットし、`REAUTH_LAST_FAILED_AT` を NULL へ初期化した上で、操作中の `LOGIN_SESSION` のみを物理削除する。他端末・他ブラウザのセッションはこの失敗処理では削除しない。
 - 5回目は `401 SESSION_DESTROYED` と両Cookieの削除ヘッダーを返し、フロントエンドはログイン画面へ遷移する。
 - パスワード不一致の応答には、1〜5回目のいずれもTiming Attack対策として `1.0s ± 0.1s` の遅延を適用する。
 
@@ -109,7 +110,9 @@ API設計で定める次の順序で評価する。前段の検証でエラー�
    - `IS_DELETED = TRUE`
    - `DELETED_AT = NOW()`
    - `EMAIL = deleted_<USER_ID>_<EMAIL>` 形式へ退避し、元メールアドレスでの再登録を可能にする
-5. コミット後に `200 OK` と両Cookieの削除ヘッダーを返す。フロントエンドはローカルの認証状態を破棄してログイン画面へ遷移する。
+   - `REAUTH_FAILED_COUNT = 0`、`REAUTH_LAST_FAILED_AT = NULL` へ初期化
+5. `ACCESS_LOG` を記録してコミットする。
+6. コミット後に `200 OK` と両Cookieの削除ヘッダーを返す。フロントエンドはローカルの認証状態を破棄してログイン画面へ遷移する。
 
 ## 3.5 エラー処理
 
@@ -130,3 +133,10 @@ API設計で定める次の順序で評価する。前段の検証でエラー�
 - 状態変更を伴う `DELETE` のため、有効なCSRFトークンがないリクエストでは削除処理を開始しない。
 - 削除成功後は全ログインセッションが失効するため、同一端末を含むすべての端末で以後のAPIアクセスを `401 UNAUTHORIZED` とする。
 - 論理削除済みアカウントの元メールアドレスによるログインは未登録アカウントと同じ認証失敗として扱い、削除済みであることを外部へ開示しない。
+
+## 3.7 ログ・監査
+
+- `ACCESS_LOG` にユーザーID、アクセス元IP、`DELETE users/{user_id}`、対象ユーザーID、アクセス日時を、成功・各失敗について記録する。
+- `ACCESS_LOG` は90日保持し、毎日01:00 JSTのCronで期限超過分を物理削除する。
+- アプリケーション監査ログには、結果コード、再認証失敗回数到達区分、操作中セッション強制破棄または全セッション失効の事実を記録できる。ただしパスワード、ハッシュ、Cookie値、CSRFトークンは記録しない。
+- ログ保存失敗は運用監視へ通知し、秘匿情報を含む内部詳細をクライアントへ返さない。

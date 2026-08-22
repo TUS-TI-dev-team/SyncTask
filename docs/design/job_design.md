@@ -1,7 +1,7 @@
 # Job API Design (ジョブ処理・定期バッチ詳細設計書)
 
 **対象**: 実装担当者・運用担当者向け  
-**前提**: `docs/req-def/requirements.md`, `docs/design/database_design.md`, `docs/design/api_design.md` を踏まえていること
+**前提**: [docs/req-def/requirements/README.md](../req-def/requirements/README.md), [docs/design/database_design.md](database_design.md), [docs/design/api_design/01_overview.md](api_design/01_overview.md) を踏まえていること
 
 ---
 
@@ -9,6 +9,10 @@
 
 本システムにおけるバックグラウンド・定期実行処理（Cron ジョブ）の一覧です。  
 ※ スケジューラの基準タイムゾーンはすべて **日本標準時 (JST / `Asia/Tokyo`)** です。
+
+> [!NOTE]
+> **定期タスク（繰り返しタスク）生成に関する設計方針**
+> 繰り返しタスクはバックグラウンド Cron バッチによる未来生成方式ではなく、タスク作成API（`POST /api/v1/tasks`）による「同期即時一括生成方式（最大100件/1年間以内）」を採用しています。生成されたタスクは個別独立した通常レコードとして `TASK` テーブルに直接登録・管理されるため、Cron スケジューラにおける定期タスク生成ジョブおよびルール管理テーブル（`RECURRING_TASKS` 等）は不要（本設計書のスコープ外）です。
 
 | job_type | 説明 | トリガー / 起動タイミング (JST) | 処理対象テーブル | 実行方式 | 冪等性 / 排他制御 |
 | --- | --- | --- | --- | --- | --- |
@@ -22,11 +26,13 @@
 
 ## 2. ジョブ共通設計
 
-### 2-1. 多重起動防止・排他制御（Advisory Lock）
+### 2-1. 多重起動防止・排他制御（Advisory Lock & 専用コネクション保持）
 マルチインスタンス・水平スケール構成や処理遅延による重複起動を防ぐため、PostgreSQL の Advisory Lock（`pg_try_advisory_lock`）を利用します。
-- 各ジョブ固有のロックキー（64bit整数ハッシュ）を割り当てます。
-- ジョブ起動直後にロック獲得を試み、ロックが取得できなかった場合（他インスタンスまたは同一プロセスで実行中）は、待機せず即座に処理をスキップして正常終了（ログ出力あり）とします。
-- 処理完了時（成功・失敗・中断問わず `finally` / `defer` 節）に `pg_advisory_unlock` を実行してロックを解放します。
+- **専用コネクション排有取得（Go `database/sql` 対策）**:
+  - PostgreSQL のセッションレベル Advisory Lock は「DBの物理接続（セッション）」に束縛されます。Go の `*sql.DB` コネクションプールで別々の物理接続が払い出されるのを防ぐため、ジョブ実行開始時に必ず `conn, err := db.Conn(ctx)` により**単一の専用コネクションを排有取得**します。
+  - ジョブ内のロック獲得（`pg_try_advisory_lock`）、各チャンクトランザクション実行、ロック解放（`pg_advisory_unlock`）、および接続返却（`defer conn.Close()`）をすべて同一の `conn` 上で完結させます。
+- **ロック取得判定**: 各ジョブ固有のロックキー（64bit整数ハッシュ）を割り当て、ジョブ起動直後にロック獲得を試みます。ロックが取得できなかった場合（他インスタンスまたは同一プロセスで実行中）は、待機せず即座に処理をスキップして正常終了（スキップログ出力）とします。
+- **確実なアンロック**: 処理完了時（正常完了、リトライ失敗、恒久エラー中断を問わず `defer` 節）に `SELECT pg_advisory_unlock(:lock_key)` を実行し、ロックを確実に解放します。
 
 | job_type | ロックキー識別子 (例: int64 ハッシュ値) |
 | --- | --- |
@@ -62,7 +68,7 @@ WHERE <primary_key> IN (SELECT <primary_key> FROM target_rows);
 ## 3. ジョブ詳細仕様
 
 ### 3-1. OTP セッションクリーンアップ (`CLEANUP_OTP_SESSIONS`)
-- **目的**: 全体最大有効期限（15分）が経過したレコード、または明示的に無効化・失効済み（`STATUS IN ('expired', 'completed')`）かつ単発有効期限（5分）が過ぎた `OTP_SESSION` テーブルの不要レコードを削除し、DB 領域をクリーンに保つ。
+- **目的**: 全体最大有効期限（15分）が経過したレコード、またはステータスが `active` のまま単発有効期限（5分）が過ぎて放置された `OTP_SESSION` テーブルの不要レコードを削除し、DB 領域をクリーンに保つ。
 - **実行頻度**: 15分ごと (`*/15 * * * *` JST)
 - **クリーンアップ SQL**:
 ```sql
@@ -70,7 +76,8 @@ WITH target_rows AS (
     SELECT OTP_SESSION_ID
     FROM OTP_SESSION
     WHERE SESSION_EXPIRES_AT < NOW()
-       OR (STATUS IN ('expired', 'completed') AND OTP_EXPIRES_AT < NOW())
+       OR (STATUS = 'active' AND OTP_EXPIRES_AT < NOW())
+    ORDER BY OTP_SESSION_ID ASC
     LIMIT :batch_size
 )
 DELETE FROM OTP_SESSION
@@ -89,6 +96,7 @@ WITH target_rows AS (
     SELECT SESSION_ID
     FROM LOGIN_SESSION
     WHERE EXPIRES_AT < NOW()
+    ORDER BY SESSION_ID ASC
     LIMIT :batch_size
 )
 DELETE FROM LOGIN_SESSION
@@ -107,6 +115,7 @@ WITH target_rows AS (
     SELECT LOG_ID
     FROM ACCESS_LOG
     WHERE ACCESS_AT < NOW() - INTERVAL '90 days'
+    ORDER BY LOG_ID ASC
     LIMIT :batch_size
 )
 DELETE FROM ACCESS_LOG
@@ -126,6 +135,7 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
       SELECT LOG_ID
       FROM LOGIN_LOG
       WHERE ACCESS_AT < NOW() - INTERVAL '365 days'
+      ORDER BY LOG_ID ASC
       LIMIT :batch_size
   )
   DELETE FROM LOGIN_LOG
@@ -137,6 +147,7 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
       SELECT LOG_ID
       FROM MAIL_AUTH_LOG
       WHERE ACCESS_AT < NOW() - INTERVAL '365 days'
+      ORDER BY LOG_ID ASC
       LIMIT :batch_size
   )
   DELETE FROM MAIL_AUTH_LOG
@@ -147,15 +158,16 @@ WHERE LOG_ID IN (SELECT LOG_ID FROM target_rows);
   - 削除成功時: `[INFO] Cleaned up total {count_login} login logs and {count_mail} mail auth logs.`
 
 ### 3-5. レートリミットクリーンアップ (`CLEANUP_RATE_LIMITS`)
-- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から30日以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
-- **実行頻度**: 毎日 03:00 (`0 0 1 * *` JST)
+- **目的**: 遮断解除日時（`BLOCKED_UNTIL`）を経過し、かつ `LAST_FAILED_AT` から24時間（1日）以上経過した不要な `LOGIN_IP_RATE_LIMIT` レコードを物理削除する。
+- **実行頻度**: 毎日 03:00 (`0 3 * * *` JST)
 - **クリーンアップ SQL**:
 ```sql
 WITH target_rows AS (
     SELECT IP_ADDRESS
     FROM LOGIN_IP_RATE_LIMIT
     WHERE (BLOCKED_UNTIL IS NULL OR BLOCKED_UNTIL < NOW())
-      AND LAST_FAILED_AT < NOW() - INTERVAL '1 MONTH'
+      AND LAST_FAILED_AT < NOW() - INTERVAL '24 hours'
+    ORDER BY IP_ADDRESS ASC
     LIMIT :batch_size
 )
 DELETE FROM LOGIN_IP_RATE_LIMIT
@@ -175,31 +187,45 @@ WHERE IP_ADDRESS IN (SELECT IP_ADDRESS FROM target_rows);
 sequenceDiagram
     participant Cron as "Cron / Scheduler (JST)"
     participant Runner as "Job Runner"
-    participant DB as "PostgreSQL (Supabase)"
+    participant DBConn as "Dedicated DB Conn (db.Conn)"
 
     Cron->>Runner: ジョブ起動要求 (例: CLEANUP_EXPIRED_SESSIONS)
     activate Runner
     
-    Runner->>DB: SELECT pg_try_advisory_lock(1002)
-    activate DB
-    DB-->>Runner: lock_acquired (true / false)
-    deactivate DB
+    Runner->>DBConn: db.Conn(ctx) 専用コネクション取得
+    activate DBConn
+    Runner->>DBConn: SELECT pg_try_advisory_lock(1002)
+    DBConn-->>Runner: lock_acquired (true / false)
 
     alt lock_acquired == false (他プロセス実行中)
         Runner->>Runner: ログ出力 (Skipped)
+        Runner->>DBConn: conn.Close()
+        deactivate DBConn
     else lock_acquired == true
         loop 削除対象が 0 件になるまで繰り返し
-            Runner->>DB: BEGIN トランザクション
-            Runner->>DB: DELETE ... LIMIT 1000
-            activate DB
-            DB-->>Runner: rows_affected
-            deactivate DB
-            Runner->>DB: COMMIT トランザクション
+            loop 一時エラーリトライ (最大3回 指数バックオフ)
+                Runner->>DBConn: BEGIN トランザクション
+                Runner->>DBConn: DELETE ... LIMIT 1000
+                DBConn-->>Runner: rows_affected / error
+                alt 成功
+                    Runner->>DBConn: COMMIT トランザクション
+                else 一時エラー発生 (デッドロック 40P01 / タイムアウト等)
+                    Runner->>DBConn: ROLLBACK トランザクション
+                    Runner->>Runner: 指数バックオフ待機後にリトライ
+                else 恒久エラーまたはリトライ上限超過
+                    Runner->>DBConn: ROLLBACK トランザクション
+                    Runner->>Runner: 構造化エラーログ出力 (ERROR)
+                    Runner->>DBConn: SELECT pg_advisory_unlock(1002) (defer)
+                    Runner->>DBConn: conn.Close() (defer)
+                end
+            end
             alt rows_affected > 0
                 Runner->>Runner: sleep(50ms) 負荷軽減
             end
         end
-        Runner->>DB: SELECT pg_advisory_unlock(1002)
+        Runner->>DBConn: SELECT pg_advisory_unlock(1002) (defer)
+        Runner->>DBConn: conn.Close() (defer)
+        deactivate DBConn
         Runner->>Runner: ログ出力 (削除合計件数)
     end
     deactivate Runner
@@ -219,12 +245,12 @@ sequenceDiagram
   - SQL 構文エラー / 型不整合（スキーマ不一致）
   - テーブル・カラム未存在エラー
   - 認証・認可エラー
-  - ※ リトライせず即座に `ERROR` ログを出力してジョブを異常終了します。
-- **リトライ方式**:
-  - **指数バックオフ + ジッター (Exponential Backoff with Full Jitter)** を採用します。
-  - 最大リトライ回数: 3 回
+  - ※ リトライせず即座に `ERROR` ログを出力してジョブを異常終了（`defer` でアンロック・コネクション解放）します。
+- **リトライ方式（チャンク単位リトライ）**:
+  - 各チャンク（1,000件単位トランザクション）実行時に一時エラーを検知した場合、当該チャンクを**指数バックオフ + ジッター (Exponential Backoff with Full Jitter)** で最大3回まで再試行します。
   - 待機時間計算式: $T = \min(\text{base} \times 2^{\text{attempt}}, \text{max\_wait}) \times \text{rand}(0, 1)$  
     （例: base = 1秒, max_wait = 10秒の場合: 1回目 ~1秒, 2回目 ~2秒, 3回目 ~4秒）
+  - 3回のリトライすべてに失敗した場合、または恒久エラーを検知した場合は、ジョブ全体を即座に中断し、`defer` で確実に `pg_advisory_unlock` および `conn.Close()` を行った上で構造化エラーログを出力します。
 
 ### 5-2. 構造化エラーログフォーマット
 ジョブ失敗時は、ログ収集基盤（CloudWatch, Datadog 等）で容易にパース・監視できるように JSON 形式の構造化ログを出力します。
@@ -243,7 +269,7 @@ sequenceDiagram
 ```
 
 ### 5-3. 監視・アラート方針
-- 要件定義書（`docs/req-def/requirements.md` 非機能要件: 運用・保守性）の規定に基づき、**システムからの能動的なメール送信やメーリングリスト宛通知は行いません**。
+- 要件定義書（[docs/req-def/requirements/04_non_functional.md](../req-def/requirements/04_non_functional.md) 非機能要件: 運用・保守性）の規定に基づき、**システムからの能動的なメール送信やメーリングリスト宛通知は行いません**。
 - ジョブ異常終了はすべて標準出力/ログファイルに `ERROR` レベルで記録され、外部ログ監視基盤のアラート検知（ログフィルターやメトリクス監視）により運用管理者が検知・対処します。
 
 ---

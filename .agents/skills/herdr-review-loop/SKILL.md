@@ -1,13 +1,13 @@
 ---
 name: herdr-review-loop
-description: "herdr CLIを使用して子エージェント（worker）を自動制御・オーケストレーションし、複数レビュー対象に対する並列レビュー実行（review-changes）、指摘確認後のレビューワーカー終了、新規Tab/Agentによる/grill-meとask_questionツールを用いた対話型方針ヒアリングおよび修正適用（apply-review-fixes）、再レビュー反復サイクルを全指摘解消まで全自動で実行するためのスキルです。"
+description: "herdr CLIを使用して子エージェント（worker）を自動制御・オーケストレーションし、複数レビュー対象に対する並列レビュー実行（review-changes）、指摘確認後のレビューワーカー終了、指摘数に応じた複数fix-worker（1workerあたり最大5件）による/grill-meと親エージェント経由のask_questionツールを用いた対話型方針ヒアリングおよび修正適用（apply-review-fixes）、再レビュー反復サイクルを全指摘解消まで全自動で実行するためのスキルです。"
 ---
 
 # herdr-review-loop Skill
 
 このスキルは、`herdr` CLI（マルチエージェントオーケストレーションランタイム）を活用し、**親エージェント（Orchestrator）が子エージェント（Worker）のライフサイクル管理とタスクオーケストレーションを全自動制御**します。
 
-レビュー対象が複数の場合は並列可能な範囲に分割して複数の子エージェント（1 worker につき 1 tab）で並列査読を行い、レビュー完了後に一旦ワーカーを破棄します。指摘が存在する場合は新しく単一の修正用エージェントを新規 Tab で起動して `/grill-me` と `ask_question` ツールによる方針ヒアリングおよび修正適用（`apply-review-fixes`）を一括して行い、すべてのレビュー指摘が解消されるまでこのサイクルを自動反復します。
+レビュー対象が複数の場合は並列可能な範囲に分割して複数のレビュー用子エージェント（1 worker につき 1 tab）で並列査読を行い、レビュー完了後に一旦ワーカーを破棄します。指摘が存在する場合は、指摘ファイル群を修正対象・関連度ごとに1ワーカーあたり最大5件に分割し、グループ数に応じた修正用エージェント（`fix-worker-1..K`）を新規 Tab で起動して `/grill-me` と修正適用（`apply-review-fixes`）を並列実行します。各修正ワーカーからの質問は親エージェントが `ask_question` ツールを介してユーザーと中継し、すべてのレビュー指摘が解消されるまでこのサイクルを自動反復します。
 
 ---
 
@@ -17,34 +17,35 @@ description: "herdr CLIを使用して子エージェント（worker）を自動
 flowchart TD
     subgraph UserInteraction ["人間 (ユーザー)"]
         U1["1. レビュー対象を指示"]
-        U2["6. ask_question モーダルで方針を選択・回答"]
+        U2["6. ask_question モーダルで方針を選択・回答（親エージェントとのみ対話）"]
     end
 
     subgraph Orchestrator ["親エージェント (Orchestrator)"]
         direction TB
         O1["1. レビュー対象の確認 & N個の並列タスクに分割整理"]
-        O2["2. N個の Tab 作成 & worker-1..N を起動"]
-        O3["3. 各 worker-1..N に並列レビュー指示 & herdr agent wait で全完了待機"]
+        O2["2. N個の Tab 作成 & review-worker-1..N を起動"]
+        O3["3. 各 review-worker に並列レビュー指示 & herdr agent wait で全完了待機"]
         O4["4. docs/review/ の指摘集約 & N個のレビュー用 Tab を全クローズ"]
         O5{"指摘あり？"}
-        O6["5. 修正用 Tab を新規作成 & 修正用 worker を起動"]
-        O7["6. worker に全指摘まとめて /grill-me /apply-review-fixes を指示"]
-        O8["6. worker の質問を ask_question で人間に中継 & 回答を送信"]
-        O9["7. 修正・検証完了待機 & 修正用 Tab をクローズ"]
+        O6["5. 指摘を最大5件ずつK個のグループに分割 & K個の Tab 作成 & fix-worker-1..K を起動"]
+        O7["6. 各 fix-worker-i に担当指摘（最大5件）と /grill-me /apply-review-fixes を指示"]
+        O8["6. 各 fix-worker-i の質問を検知し ask_question で人間に中継 & 回答を該当 worker へ送信"]
+        O9["7. 全 fix-worker の修正・検証完了待機 & K個の修正用 Tab を全クローズ"]
         O10["8. 1 に戻り再レビュー & 指摘0件までループ"]
     end
 
-    subgraph ReviewWorkers ["レビュー用子エージェント (worker-1..N / 各自個別Tab)"]
+    subgraph ReviewWorkers ["レビュー用子エージェント (review-worker-1..N / 各自個別Tab)"]
         direction TB
-        RW1["worker-1: 担当範囲 1 を査読 → 指摘ファイル生成"]
+        RW1["review-worker-1: 担当範囲 1 を査読 → 指摘ファイル生成"]
         RW2["..."]
-        RW3["worker-N: 担当範囲 N を査読 → 指摘ファイル生成"]
+        RW3["review-worker-N: 担当範囲 N を査読 → 指摘ファイル生成"]
     end
 
-    subgraph FixWorker ["修正用子エージェント (新規起動 / 専用Tab)"]
+    subgraph FixWorkers ["修正用子エージェント (fix-worker-1..K / 各自専用Tab / 最大5件担当)"]
         direction TB
-        FW1["/grill-me で修正方針の質問を出力"]
-        FW2["回答をもとにコード/仕様書修正 & テスト検証 & Status: Resolved 更新"]
+        FW1["fix-worker-1: 担当指摘 (最大5件) を /grill-me 検討 → 質問出力 / 修正・検証"]
+        FW2["..."]
+        FW3["fix-worker-K: 担当指摘 (最大5件) を /grill-me 検討 → 質問出力 / 修正・検証"]
     end
 
     U1 --> O1
@@ -56,13 +57,13 @@ flowchart TD
     O4 --> O5
     O5 -- "指摘0件 (Passed)" --> End(["完了報告して終了"])
     O5 -- "指摘あり (Open)" --> O6
-    O6 --> FW1
-    O7 --> FW1
-    FW1 -- "質問出力" --> O8
-    O8 -- "ask_question" --> U2
+    O6 --> FW1 & FW2 & FW3
+    O7 --> FW1 & FW2 & FW3
+    FW1 & FW2 & FW3 -- "質問出力" --> O8
+    O8 -- "ask_question で中継" --> U2
     U2 -- "回答" --> O8
-    O8 -- "回答送信" --> FW2
-    FW2 -- "done" --> O9
+    O8 -- "回答送信" --> FW1 & FW2 & FW3
+    FW1 & FW2 & FW3 -- "done" --> O9
     O9 --> O10
     O10 --> O1
 ```
@@ -96,7 +97,7 @@ TARGETS=(
 )
 
 # 2. 各対象ごとに Tab を作成し、worker-1..N を起動
-TAB_IDS=()
+REVIEW_TAB_IDS=()
 
 for i in "${!TARGETS[@]}"; do
   WORKER_ID="worker-$((i+1))"
@@ -107,7 +108,7 @@ for i in "${!TARGETS[@]}"; do
   TAB_ID=$(printf '%s\n' "$CREATE_RES" | jq -r '.result.tab.tab_id')
   PANE_ID=$(printf '%s\n' "$CREATE_RES" | jq -r '.result.root_pane.pane_id')
 
-  TAB_IDS+=("$TAB_ID")
+  REVIEW_TAB_IDS+=("$TAB_ID")
 
   # 作成された Tab の root_pane でエージェントを起動
   herdr agent start "$WORKER_ID" --kind agy --pane "$PANE_ID"
@@ -115,7 +116,7 @@ done
 ```
 
 > [!NOTE]
-> 作成した各 Tab ID 配列（`TAB_IDS`）は、レビュー完了後のクローズ処理のために保持しておきます。
+> 作成した各 Tab ID 配列（`REVIEW_TAB_IDS`）は、レビュー完了後のクローズ処理のために保持しておきます。
 
 ---
 
@@ -169,7 +170,7 @@ done
 
 ```bash
 # レビュー用ワーカーの全 Tab をクローズ
-for TAB_ID in "${TAB_IDS[@]}"; do
+for TAB_ID in "${REVIEW_TAB_IDS[@]}"; do
   herdr tab close "$TAB_ID"
 done
 ```
@@ -178,70 +179,104 @@ done
    - **`Status: Open` が 0件の場合**:
      - ユーザーに「すべてのレビューチェックを通過しました。修正が必要な指摘はありません。」と完了報告を行い、**処理を終了します**。
    - **`Status: Open` が 1件以上存在する場合**:
-     - 次のステップ（Step 5）に進み、修正サイクルを開始します。
+     - 次のステップ（Step 5）に進み、指摘のグループ分割と修正サイクルを開始します。
 
 ---
 
-### 5. 修正用 Tab の新規作成と修正用エージェントの起動
+### 5. 指摘のグループ分割（最大5件/worker）と修正用 Tab / エージェントの起動
 
-修正適用フェーズ（Step 6）は並列化せず、全指摘間の整合性を保ちながら一貫して修正作業を進めるため、**新規に Tab を1つ作成し、単一の修正用エージェント（`worker`）を起動**します。
+指摘事項が多い場合に 1 つのエージェントでコンテキスト溢れや対応漏れが発生するのを防ぐため、**1 つの fix-worker が担当する指摘ファイルは最大 5 件まで**とします。
+
+1. **指摘ファイルのグループ化（最大5件 / グループ）**:
+   - 抽出されたオープンな指摘ファイル群について、同一または関連するソースコード・仕様書を修正する指摘同士を優先してまとめます。
+   - 1 グループあたりの指摘ファイル数が最大 5 件になるよう $K$ 個のグループ（`FIX_GROUP_1`, `FIX_GROUP_2`, ..., `FIX_GROUP_K`）に分割します。
+2. **グループ数 $K$ に応じた新規 Tab 作成と `fix-worker-1..K` の起動**:
 
 ```bash
-RES_FIX=$(herdr tab create --cwd "$PWD" --label "fix-worker" --no-focus)
-FIX_TAB=$(printf '%s\n' "$RES_FIX" | jq -r '.result.tab.tab_id')
-FIX_PANE=$(printf '%s\n' "$RES_FIX" | jq -r '.result.root_pane.pane_id')
-herdr agent start worker --kind agy --pane "$FIX_PANE"
+# 各グループごとに Tab を作成し、fix-worker-1..K を起動
+FIX_TAB_IDS=()
+NUM_FIX_GROUPS=${#FIX_GROUPS[@]} # グループ数 K
+
+for i in $(seq 1 $NUM_FIX_GROUPS); do
+  WORKER_ID="fix-worker-$i"
+  RES_FIX=$(herdr tab create --cwd "$PWD" --label "$WORKER_ID" --no-focus)
+  FIX_TAB=$(printf '%s\n' "$RES_FIX" | jq -r '.result.tab.tab_id')
+  FIX_PANE=$(printf '%s\n' "$RES_FIX" | jq -r '.result.root_pane.pane_id')
+  FIX_TAB_IDS+=("$FIX_TAB")
+
+  herdr agent start "$WORKER_ID" --kind agy --pane "$FIX_PANE"
+done
 ```
 
 ---
 
-### 6. apply-review-fixes の指示と対話型方針ヒアリング (`/grill-me` + `ask_question`)
+### 6. apply-review-fixes の並列指示と対話型方針ヒアリングの中継
 
-#### 6-1. 修正用エージェントへの一括修正指示
-Step 4 で検出された**全オープン指摘ファイルをまとめて指定**し、`/grill-me /apply-review-fixes` を指示します：
+各 `fix-worker-i` に担当する指摘ファイル（最大5件）を渡し、親エージェントが司令塔として質問の中継と進行管理を行います。**ユーザーは親エージェントとのみ対話します**。
 
-```bash
-PROMPT="/grill-me /apply-review-fixes
-対象指摘ファイル:
-- docs/review/<sanitized-branch>/issue-1.md
-- docs/review/<sanitized-branch>/issue-2.md
-...
-上記の指摘内容をすべて確認し、修正方針を検討してください。修正方針に選択肢や確認事項がある場合は、具体的な質問と選択肢を提示してください。"
-
-herdr agent prompt worker "$PROMPT" --wait --timeout 300000
-```
-
-#### 6-2. 子エージェントからの質問の読み取り
-子エージェントは `/grill-me` により方針に関する質問を出力して待機状態になります。親エージェントはターミナル出力を読み取ります：
+#### 6-1. 各 fix-worker へのプロンプト一斉投入（非同期）
 
 ```bash
-herdr agent read worker --source recent-unwrapped --lines 50
+for i in $(seq 1 $NUM_FIX_GROUPS); do
+  WORKER_ID="fix-worker-$i"
+  # グループ i に割り当てられた最大5件の指摘ファイルリストを展開
+  ISSUES="${FIX_GROUPS[$((i-1))]}"
+
+  PROMPT="/grill-me /apply-review-fixes
+担当指摘ファイル:
+$ISSUES
+上記の指摘内容（最大5件）を確認し、修正方針を検討してください。修正方針に選択肢や確認事項がある場合は、具体的な質問と選択肢を提示してください。"
+
+  # 非同期（--wait なし）で送信
+  herdr agent prompt "$WORKER_ID" "$PROMPT"
+done
+
+sleep 2
 ```
 
-#### 6-3. 親エージェントが `ask_question` ツールでユーザーに提示
-親エージェントは、子エージェントから出力された質問内容・選択肢をそのまま Antigravity の `ask_question` ツールに渡し、ユーザーに選択式＋自由記述のモーダルを表示します。
+#### 6-2. 親エージェントによる質問の検知・ユーザーへの `ask_question` 中継
+
+親エージェントは各 `fix-worker-i` の状態を順次巡回・監視します。子エージェントが方針検討を行い、質問を出力して待機状態（または settled / blocked 状態）になったことを検知した場合、**親エージェントが `ask_question` ツールを呼び出してユーザーへ提示**します。
+
+1. **出力の読み取り**:
+   ```bash
+   herdr agent read "$WORKER_ID" --source recent-unwrapped --lines 50
+   ```
+2. **親エージェントによる `ask_question` の実行**:
+   - 質問内容、どのワーカー（例: `fix-worker-1`）およびどの指摘ファイルに関するものかを明確にして `ask_question` モーダルを表示します。
+   - ユーザーは選択肢からの選択、または自由記述入力で回答します。
+3. **ユーザー回答の該当 worker への送信**:
+   - 取得したユーザーの回答を該当する `fix-worker-i` にのみ送信し、修正作業を開始させます。
+
+   ```bash
+   herdr agent prompt "$WORKER_ID" "ユーザーからの回答: <ユーザーが選択・入力した回答テキスト>。この方針に従って修正作業（仕様書・コードの修正およびテスト検証）を進めてください。"
+   ```
 
 > [!IMPORTANT]
-> `ask_question` ツールを使用することで、ユーザーは提示された複数の選択肢（Options）から選択できるだけでなく、デフォルトで用意された自由記述入力欄（write-in）を使って独自の追加指示を行うことができます。
-
-#### 6-4. ユーザー回答を子エージェントへ送信
-ユーザーから返ってきた回答内容をそのまま `worker` エージェントへ送信します：
-
-```bash
-herdr agent prompt worker "ユーザーからの回答: <ユーザーが選択・入力した回答テキスト>。この方針に従って修正作業（仕様書・コードの修正およびテスト検証）を進めてください。" --wait --timeout 600000
-```
-
-※子エージェントから更なる追加の質問が出力された場合は、同様に `ask_question` ツールを介してユーザーへ中継します。
+> - 各 fix-worker が独自に直接ユーザーと対話することはありません。
+> - 質問が発生した fix-worker から順次即座に `ask_question` を通じてユーザーに回答を仰ぎ、回答が得られた worker から順次修正・テスト検証作業へ移行させます。
 
 ---
 
-### 7. 修正・テスト検証の完了待機と修正用 Tab のクローズ
+### 7. 修正・テスト検証の完了待機と修正用 Tab の全クローズ
 
-1. `worker` エージェントが仕様書・コードの修正、回帰テストの実行、および問題ファイルのヘッダー更新（`- **Status**: Resolved`）と完了報告の追記を終え、`done`（または `idle`）になるまで待機します。
-2. 修正・検証の完了を確認後、**修正用 Tab をクローズして終了します**：
+1. 親エージェントは、全 `fix-worker-1..K` が仕様書・コードの修正、回帰テストの実行、および担当指摘ファイルのヘッダー更新（`- **Status**: Resolved`）と完了報告の追記を終え、完了（`done` / `idle`）になるまで待機します。
 
 ```bash
-herdr tab close "$FIX_TAB"
+# 全 fix-worker の完了を順次待機
+for i in $(seq 1 $NUM_FIX_GROUPS); do
+  WORKER_ID="fix-worker-$i"
+  herdr agent wait "$WORKER_ID" --timeout 600000
+done
+```
+
+2. すべての `fix-worker` の修正・検証完了を確認後、**作成したすべての修正用 Tab をクローズしてリソースを解放します**：
+
+```bash
+# 全修正用 Tab をクローズ
+for TAB_ID in "${FIX_TAB_IDS[@]}"; do
+  herdr tab close "$TAB_ID"
+done
 ```
 
 ---
