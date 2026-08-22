@@ -38,8 +38,8 @@ sequenceDiagram
         Frontend-->>User: インラインエラー表示
     else 入力正常
         Frontend->>Backend: PUT users/{user_id}<br/>Cookie + X-CSRF-Token
-        Backend->>Backend: CSRF認証
-        Backend->>DB: 認証、現在値取得
+        Backend->>Backend: ログイン認証、CSRF認証、バリデーション検証
+        Backend->>DB: 現在値取得
         Backend->>Backend: 現在値との一致検査
         alt 検証エラー（同一ユーザー名等）
             Backend-->>Frontend: 4xx エラー応答
