@@ -1,9 +1,6 @@
-# ローカルDB導入およびE2Eテスト環境構築 計画書
+# ローカルDB（PostgreSQL）インフラ基盤構築 計画書
 
-本ドキュメントでは、以下の2タスクに関する設計・実装計画を定義します。
-
-1. **Task 1**: ローカル開発・テスト用 PostgreSQL（Docker）の導入
-2. **Task 2**: フロントエンド ↔ バックエンド ↔ DB が連携するE2Eテスト環境の構築
+本ドキュメントでは、ローカル開発・テスト用 PostgreSQL（Docker）の導入に関する設計・実装計画を定義します。E2Eテスト環境の構築については [02-setup-e2e-testing.md](./02-setup-e2e-testing.md) を参照してください。
 
 ---
 
@@ -62,7 +59,7 @@
 
 ---
 
-## 3. Task 1: ローカルDB（PostgreSQL）インフラ基盤の構築
+## 3. ローカルDB（PostgreSQL）インフラ基盤の構築
 
 ### 3.1 目標
 
@@ -506,282 +503,9 @@ DB_NAME=synctask_e2e docker compose up --build
 
 ---
 
-## 4. Task 2: E2Eテスト環境構築 + スモークテスト
+## 4. ファイル変更一覧
 
-### 4.1 目標
-
-- `docker compose up` で frontend + backend + DB が連携して起動する環境を構築する。
-- Playwright が全サービス（フロントエンド ↔ バックエンド ↔ DB）に対してスモークE2Eテストを実行できるようにする。
-- `globalSetup` でバックエンド起動を待機し、未起動時は分かりやすいエラーメッセージを出力する。
-- DB初期化/リセットの仕組みを提供する（テスト実行前にDBをクリーンな状態にする）。
-
-### 4.2 削除ファイル
-
-#### 4.2.1 削除: `frontend/e2e/dev-sample.spec.ts`
-
-ユーザー指示により削除。新規E2E（`smoke.spec.ts`）に置換。
-
-> **注**: `frontend/app/dev-sample/` ページ本体とそのコンポーネントテスト（`frontend/app/dev-sample/__tests__/page.test.tsx`）は**残置**する。これらはユニット/コンポーネントテストとして有効であり、E2Eテストとは独立して実行される。
-
-### 4.3 新規作成ファイル
-
-#### 4.3.1 新規: `frontend/e2e/global-setup.ts`
-
-Playwright の `globalSetup` スクリプト。バックエンドの起動を待機する。
-
-**構造:**
-
-```typescript
-import { request } from '@playwright/test';
-
-async function globalSetup() {
-  const apiURL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-  const maxRetries = 30;
-  const retryInterval = 1000; // 1秒
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const context = await request.newContext();
-      const response = await context.get(`${apiURL}/health-check`);
-      if (response.ok()) {
-        const body = await response.json();
-        if (body.database === 'connected') {
-          console.log('✅ バックエンド + DB が起動済み（E2Eテスト開始可能）');
-          return;
-        }
-        console.log(`⚠️ バックエンド起動済みですがDB接続状態: ${body.database}`);
-      }
-      await context.dispose();
-    } catch {
-      // バックエンド未起動
-    }
-    await new Promise((resolve) => setTimeout(resolve, retryInterval));
-  }
-
-  throw new Error(
-    `バックエンドが起動していません（${apiURL}/health-check に接続できません）。\n` +
-    'E2Eテストを実行する前に `docker compose up` で全サービスを起動してください。'
-  );
-}
-
-export default globalSetup;
-```
-
-**設計ポイント:**
-
-- バックエンドの `/health-check` エンドポイント（開発モード限定）をポーリング。
-- レスポンスの `database` フィールドが `"connected"` であることも確認（DB接続済みであることの検証）。
-- 最大30秒待機（1秒 × 30リトライ）。
-- 未起動時は `docker compose up` を促すエラーメッセージを出力。
-- `NEXT_PUBLIC_API_URL` 環境変数でバックエンドURLを切り替え可能（デフォルト: `http://localhost:8080`）。
-
-#### 4.3.2 新規: `frontend/e2e/smoke.spec.ts`
-
-フルスタックスモークE2Eテスト。3層（フロントエンド ↔ バックエンド ↔ DB）が連携していることを検証する。
-
-**テストシナリオ:**
-
-```typescript
-import { test, expect, request } from '@playwright/test';
-
-test.describe('フルスタックスモークテスト (Frontend ↔ Backend ↔ DB)', () => {
-  test('シナリオ1: フロントエンドのログインページが正常にレンダリングされること', async ({ page }) => {
-    await page.goto('/login');
-    // ページタイトル要素または見出しの確認
-    await expect(page).toHaveURL(/\/login/);
-    // メールアドレス入力フィールドの存在確認
-    await expect(page.getByLabel('メールアドレス')).toBeVisible();
-    // パスワード入力フィールドの存在確認
-    await expect(page.getByLabel('パスワード')).toBeVisible();
-    // ログインボタンの存在確認
-    await expect(page.getByRole('button', { name: 'ログイン' })).toBeVisible();
-  });
-
-  test('シナリオ2: バックエンドAPI（/health-check）が200 OKで応答すること', async () => {
-    const apiURL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-    const context = await request.newContext();
-    const response = await context.get(`${apiURL}/health-check`);
-    expect(response.ok()).toBeTruthy();
-    const body = await response.json();
-    expect(body.status).toBe('ok');
-    expect(body.message).toBe('healthy');
-    await context.dispose();
-  });
-
-  test('シナリオ3: バックエンドがDBに接続済みであること（ヘルスチェック経由）', async () => {
-    const apiURL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-    const context = await request.newContext();
-    const response = await context.get(`${apiURL}/health-check`);
-    const body = await response.json();
-    expect(body.database).toBe('connected');
-    await context.dispose();
-  });
-
-  test('シナリオ4: ルートページ（/）が/loginへリダイレクトすること', async ({ page }) => {
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/login/);
-  });
-});
-```
-
-**設計ポイント:**
-
-- シナリオ1: フロントエンド（Next.js）が正常に配信されていることを確認。
-- シナリオ2: バックエンド（Go/Gin）が正常に起動していることを確認。
-- シナリオ3: バックエンドがDB（PostgreSQL）に接続済みであることを確認。3層が連携していることを1つのテストファイルで検証。
-- シナリオ4: フロントエンドのルーティングが正常に動作していることを確認。
-- `request` API（PlaywrightのAPI testing機能）を使用してバックエンドAPIを直接呼び出す。
-- API URLは `NEXT_PUBLIC_API_URL` 環境変数で切り替え可能（デフォルト: `http://localhost:8080`）。
-
-### 4.4 変更ファイル
-
-#### 4.4.1 変更: `frontend/playwright.config.ts`
-
-`globalSetup` を追加し、`webServer` の挙動を調整する。
-
-**変更内容:**
-
-```typescript
-import { defineConfig, devices } from '@playwright/test';
-
-export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'list',
-  globalSetup: './e2e/global-setup.ts',  // 新規追加
-  use: {
-    baseURL: 'http://localhost:3000',
-    trace: 'on-first-retry',
-  },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-  ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,  // 変更: !process.env.CI → true（Docker Compose起動済みサーバーを再利用）
-    timeout: 120 * 1000,
-  },
-});
-```
-
-**設計ポイント:**
-
-- `globalSetup`: バックエンド + DB の起動を待機してからテスト開始。
-- `webServer.reuseExistingServer: true`: Docker Compose で既に起動しているフロントエンドを再利用。未起動の場合は `npm run dev` で起動を試みる。
-- `testDir: './e2e'`: `smoke.spec.ts` を含む `e2e/` ディレクトリ配下の `.spec.ts` ファイルを実行。
-
-#### 4.4.2 変更: `frontend/package.json`
-
-テストスクリプトを整理する。
-
-**変更内容:**
-
-```json
-{
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "vitest run",
-    "test:unit:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
-  }
-}
-```
-
-> 既存のスクリプトから変更なし（`test:e2e` はそのまま `playwright test` を実行）。`globalSetup` と `playwright.config.ts` の変更により、`npm run test:e2e` が自動的にフルスタックE2Eテストとして動作する。
-
-#### 4.4.3 変更: `frontend/TESTING_GUIDE.md`
-
-E2Eセクションを「フルスタック結合テスト」向けに書き換える。
-
-**変更内容:**
-
-- セクション3「ブラウザ結合テスト（E2E）を作成する (Playwright)」を更新:
-  - Docker Compose で全サービス（frontend + backend + DB）を起動してからテスト実行するワークフローを記述。
-  - `globalSetup` の役割（バックエンド + DB の起動待機）を説明。
-  - テストDBの概念（`DB_NAME=synctask_e2e` でテスト専用DBを使用可能）を記述。
-- セクション5「テストの実行・デバッグ方法」のE2E部分を更新:
-  - `docker compose up` → `npm run test:e2e` の2ステップワークフローを明記。
-  - 未起動時のエラーメッセージと対処法を記述。
-
-### 4.5 新規ドキュメント
-
-#### 4.5.1 新規: `docs/backend/test-guide/README.md`
-
-バックエンド + 結合テストのガイド。
-
-**構造:**
-
-```markdown
-# バックエンド テストガイド
-
-## 1. テスト構成
-
-| テスト分類 | 対象 | 使用ツール | 実行コマンド |
-|---|---|---|---|
-| ユニットテスト | ハンドラ、ルーター、ビジネスロジック | Go testing + testify | `go test ./...` |
-| E2E結合テスト | フロントエンド ↔ バックエンド ↔ DB | Playwright | `npm run test:e2e`（frontend ディレクトリ内） |
-
-## 2. ユニットテスト
-
-### 実行方法
-
-```bash
-cd backend
-go test ./...
-go test -v ./...
-go test -cover ./...
-```
-
-### DB依存テスト
-
-- ハンドラのDB依存部分は `go-sqlmock` でモック化。
-- DB接続が必要なテストは `DB_HOST` 環境変数が設定されている場合のみ実行（未設定時は `t.Skip`）。
-
-## 3. E2E結合テスト
-
-### 事前準備
-
-```bash
-# テスト用DBで全サービス起動
-DB_NAME=synctask_e2e docker compose up --build
-```
-
-### テスト実行
-
-```bash
-cd frontend
-npm run test:e2e
-```
-
-### ワークフロー
-
-1. `docker compose up` で frontend + backend + DB が起動。
-2. `globalSetup` がバックエンドの `/health-check` をポーリングし、DB接続済みを確認してからテスト開始。
-3. Playwright がフロントエンド（`localhost:3000`）とバックエンド（`localhost:8080`）に対してテスト実行。
-
-### トラブルシューティング
-
-- **「バックエンドが起動していません」エラー**: `docker compose up` を実行して全サービスを起動してください。
-- **DB接続エラー**: `DB_NAME` 環境変数でテスト用DBを指定してください。
-
-
----
-
-## 5. ファイル変更一覧
-
-### 5.1 新規作成ファイル
+### 4.1 新規作成ファイル
 
 | ファイルパス | 内容 |
 |---|---|
@@ -791,11 +515,8 @@ npm run test:e2e
 | `backend/db/migrations/000001_init.down.sql` | 全テーブル・拡張のDROP（逆順） |
 | `backend/.env.example` | バックエンド環境変数テンプレート |
 | `.env.example` | Docker Compose用環境変数テンプレート |
-| `frontend/e2e/global-setup.ts` | Playwright globalSetup: バックエンド + DB 起動待機 |
-| `frontend/e2e/smoke.spec.ts` | フルスタックスモークE2Eテスト（4シナリオ） |
-| `docs/backend/test-guide/README.md` | バックエンド + 結合テストガイド |
 
-### 5.2 変更ファイル
+### 4.2 変更ファイル
 
 | ファイルパス | 変更内容 |
 |---|---|
@@ -807,23 +528,15 @@ npm run test:e2e
 | `backend/router/router_test.go` | 新しい `SetupRouter(db)` シグネチャに対応 |
 | `backend/go.mod` | `pgx/v5`, `golang-migrate/v4`, `go-sqlmock` 追加（`go mod tidy` 実行） |
 | `backend/Dockerfile` | レイヤーキャッシュ改善（`go.mod`/`go.sum` を先にCOPY） |
-| `frontend/playwright.config.ts` | `globalSetup` 追加、`webServer.reuseExistingServer: true` に変更 |
-| `frontend/TESTING_GUIDE.md` | E2Eセクションをフルスタック結合テスト向けに更新 |
 | `docs/design/tech_stack.md` | ローカルDB、環境変数一覧、Docker Compose構成、マイグレーション方式の記述追加 |
 | `README.md` | ローカル開発の起動手順を更新 |
 | `.gitignore` | `.env` ファイルを追加 |
 
-### 5.3 削除ファイル
-
-| ファイルパス | 理由 |
-|---|---|
-| `frontend/e2e/dev-sample.spec.ts` | ユーザー指示により削除。新規E2E（`smoke.spec.ts`）に置換。 |
-
 ---
 
-## 6. 実行順序
+## 5. 実行順序
 
-### Phase 1: Task 1（ローカルDBインフラ基盤）
+### Phase 1: ローカルDBインフラ基盤
 
 1. `docker-compose.yml` に `db` サービスを追加
 2. `backend/config/config.go` 新規作成
@@ -840,23 +553,13 @@ npm run test:e2e
 13. `docs/design/tech_stack.md` および `README.md` 更新
 14. **検証**: `docker compose up --build` で全サービス起動 → `localhost:8080/health-check` でDB接続確認 → `go test ./...` でバックエンドテスト通過確認
 
-### Phase 2: Task 2（E2Eテスト環境構築 + スモークテスト）
-
-1. `frontend/e2e/dev-sample.spec.ts` 削除
-2. `frontend/e2e/global-setup.ts` 新規作成
-3. `frontend/e2e/smoke.spec.ts` 新規作成
-4. `frontend/playwright.config.ts` 変更（`globalSetup` 追加、`reuseExistingServer` 変更）
-5. `frontend/TESTING_GUIDE.md` 更新
-6. `docs/backend/test-guide/README.md` 新規作成
-7. **検証**: `docker compose up` → `cd frontend && npm run test:e2e` でスモークテスト通過確認 → `npm run test:unit` でユニットテスト通過確認
-
 ---
 
-## 7. 検証コマンド
+## 6. 検証コマンド
 
 実装完了後に以下のコマンドで動作確認を行う。
 
-### 7.1 バックエンド
+### 6.1 バックエンド
 
 ```bash
 # バックエンドのビルド確認
@@ -869,7 +572,7 @@ cd backend && go test ./...
 cd backend && go test -cover ./...
 ```
 
-### 7.2 Docker Compose 起動確認
+### 6.2 Docker Compose 起動確認
 
 ```bash
 # 全サービス起動
@@ -884,52 +587,22 @@ docker compose exec db psql -U synctask -d synctask_dev -c "\dt"
 # 期待: 7テーブルが表示される
 ```
 
-### 7.3 E2Eテスト
-
-```bash
-# 全サービス起動（別ターミナル）
-docker compose up --build
-
-# E2Eテスト実行
-cd frontend && npm run test:e2e
-# 期待: 4シナリオすべてパス
-
-# ユニットテスト（フロントエンド）
-cd frontend && npm run test:unit
-# 期待: 既存のユニットテストがパス
-```
-
-### 7.4 テスト用DBでのE2Eテスト
-
-```bash
-# テスト用DBで全サービス起動
-DB_NAME=synctask_e2e docker compose up --build
-
-# E2Eテスト実行
-cd frontend && npm run test:e2e
-```
-
 ---
 
-## 8. 注意事項・制約
+## 7. 注意事項・制約
 
 1. **本番環境（Supabase）への影響なし**: ローカル開発・テスト用のDocker PostgreSQL追加のみ。本番のSupabase設定は環境変数で切り替え（`DB_HOST`, `DB_SSLMODE` 等）。
 2. **APIハンドラ/リポジトリ層は実装しない**: Task 1のスコープは「インフラ基盤のみ」。`database_design.md` のスキーマをマイグレーションで作成し、DB接続とヘルスチェックでのDB状態確認まで。CRUD APIの実装は別タスク。
-3. **フロントエンドのAPI呼び出しは実装しない**: Task 2のスコープは「E2Eテストインフラ構築 + スモークテスト」。フロントエンドからバックエンドAPIを呼び出す実装（APIクライアント、fetchラッパー等）は含まない。スモークテストは Playwright の `request` API でバックエンドを直接叩いて検証する。
-4. **`dev-sample` ページは残置**: `frontend/app/dev-sample/` とコンポーネントテスト（`__tests__/page.test.tsx`）はユニット/コンポーネントテストとして残す。削除対象はE2Eの `dev-sample.spec.ts` のみ。
-5. **`gin-contrib/cors` は実装しない**: `tech_stack.md` にCORSミドルウェアの記載があるが、現状のコードには未実装。本計画ではCORS実装は含まない（別タスク）。`FRONTEND_URL` 環境変数の設定のみ追加し、将来のCORS実装に備える。
-6. **本番（Supabase）でのマイグレーション実行方針**: 本Task 1ではアプリ起動時自動マイグレーション（`embed.FS` + `golang-migrate`）を採用するが、これはローカル開発・テスト環境向け。本番 Supabase ではアプリプロセス起動時の自動実行はスキーマ競合や起動ブロックのリスクがあるため、**将来的には CI/CD パイプラインから `migrate` CLI で実行する方式に移行する**（将来拡張ポイント参照）。Task 1 時点では起動時自動実行で一元化し、本番デプロイ前に見直す。
-7. **クエリレイヤ技術（sqlc / squirrel）は本Task 1では導入しない**: 設計決定事項として `sqlc` + `squirrel` 方針を記録したが、Task 1 のスコープ（インフラ基盤のみ）には含めない。`*sql.DB` インターフェースで DB 接続基盤を構築しておくことで、将来タスクで `sqlc` が生成するコードがそのまま `*sql.DB` に依存する形で自然に統合できる前提を維持する。
-8. **`job_design.md` の Advisory Lock 要件との整合**: 将来の Cron ジョブ実装（`robfig/cron/v3`）が前提とする `db.Conn(ctx)` による専用コネクション取得 + `pg_try_advisory_lock` は `*sql.DB` 標準APIで完結する。Task 1 で `pgx/v5/stdlib` + `database/sql` インターフェースを選定したことで、将来のジョブ実装も `*sql.DB` に依存する形で一貫して構築可能。Task 1 時点ではジョブ実装は含まない。
+3. **`gin-contrib/cors` は実装しない**: `tech_stack.md` にCORSミドルウェアの記載があるが、現状のコードには未実装。本計画ではCORS実装は含まない（別タスク）。`FRONTEND_URL` 環境変数の設定のみ追加し、将来のCORS実装に備える。
+4. **本番（Supabase）でのマイグレーション実行方針**: 本Task 1ではアプリ起動時自動マイグレーション（`embed.FS` + `golang-migrate`）を採用するが、これはローカル開発・テスト環境向け。本番 Supabase ではアプリプロセス起動時の自動実行はスキーマ競合や起動ブロックのリスクがあるため、**将来的には CI/CD パイプラインから `migrate` CLI で実行する方式に移行する**（将来拡張ポイント参照）。Task 1 時点では起動時自動実行で一元化し、本番デプロイ前に見直す。
+5. **クエリレイヤ技術（sqlc / squirrel）は本Task 1では導入しない**: 設計決定事項として `sqlc` + `squirrel` 方針を記録したが、Task 1 のスコープ（インフラ基盤のみ）には含めない。`*sql.DB` インターフェースで DB 接続基盤を構築しておくことで、将来タスクで `sqlc` が生成するコードがそのまま `*sql.DB` に依存する形で自然に統合できる前提を維持する。
+6. **`job_design.md` の Advisory Lock 要件との整合**: 将来の Cron ジョブ実装（`robfig/cron/v3`）が前提とする `db.Conn(ctx)` による専用コネクション取得 + `pg_try_advisory_lock` は `*sql.DB` 標準APIで完結する。Task 1 で `pgx/v5/stdlib` + `database/sql` インターフェースを選定したことで、将来のジョブ実装も `*sql.DB` に依存する形で一貫して構築可能。Task 1 時点ではジョブ実装は含まない。
 
 ---
 
-## 9. 将来の拡張ポイント
+## 8. 将来の拡張ポイント
 
 - **API実装**: Task 1で構築したDB基盤の上に、`api_design/` に基づくCRUDハンドラとリポジトリ層を実装する。
 - **リポジトリ層技術（sqlc + squirrel）導入**: 設計決定事項として記録した `sqlc`（SQL-first コード生成）+ `Masterminds/squirrel`（動的クエリビルダ）を導入する。`backend/db/queries/*.sql` 配下にクエリファイルを配置し `sqlc generate` で型安全な Go コードを生成。動的 WHERE / ORDER BY を持つ `GET tasks` エンドポイントのみ `squirrel` で組み立てる。`UPPER_SNAKE_CASE` 列名は `sqlc.yaml` の `renames` でキャメルケースにマッピング。`backend/Makefile` に `sqlc-generate` / `migrate-up` / `migrate-down` ターゲットを追加し開発体験を整備する。`sqlc` は `*sql.DB` を前提として生成されるため、Task 1 で構築した `pgx/v5/stdlib` 接続基盤と自然に統合可能。
-- **フロントエンドAPI統合**: フロントエンドからバックエンドAPIを呼び出すAPIクライアントを実装し、状態管理をクライアントメモリからAPI経由に移行する。
-- **E2Eテスト拡充**: API実装後に、ログイン → タスク作成 → 一覧表示 → ステータス更新 → 削除などの実データフローE2Eテストを `smoke.spec.ts` に追加する。
-- **CI/CD**: GitHub Actions 等で `docker compose up` → `npm run test:e2e` のワークフローを自動化する。
 - **本番マイグレーションの CI/CD 移行**: 本番 Supabase ではアプリ起動時自動マイグレーションではなく、CI/CD パイプラインから `migrate` CLI（`golang-migrate/migrate`）で実行する方式に移行する。スキーマ競合・起動ブロック回避とデプロイの再現性確保が目的。
 - **DB初期化/リセット自動化**: テスト実行前にDBをクリーンな状態にリセットする仕組み（`TRUNCATE` 全テーブル、または `migrate down` → `migrate up`）を `globalSetup` に追加する。現状はマイグレーション実行のみで、テスト間のデータリセットは各テストファイルで対応。`TRUNCATE` 方式は高速だが外部キー制約の順序に注意、`migrate down → up` 方式は確実だが遅い。テスト対象テーブル数が増えた段階で方式を選定する。
