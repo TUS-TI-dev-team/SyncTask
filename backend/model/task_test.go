@@ -228,4 +228,83 @@ func TestCreateTaskRequest_Validate(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("正常系: タイトルとコメントの前後空白がトリムされ、改行コードが正規化されること", func(t *testing.T) {
+		req := CreateTaskRequest{
+			Title:    "  課題レポート提出　　",
+			Comment:  "\r\n第1章\r\n第2章\r第3章\n\r\n",
+			Priority: "high",
+		}
+		err := req.Validate()
+		require.NoError(t, err)
+		assert.Equal(t, "課題レポート提出", req.Title)
+		assert.Equal(t, "第1章\n第2章\n第3章", req.Comment)
+	})
+
+	t.Run("正常系/異常系: 単一タスクの due_datetime 形式バリデーション", func(t *testing.T) {
+		validDueDatetimes := []string{
+			"2026-08-20",
+			"2026-08-20T23:59:00+09:00",
+			"2026-08-20T14:59:00Z",
+			"2026-08-20T23:59:00",
+		}
+		for _, dt := range validDueDatetimes {
+			req := CreateTaskRequest{
+				Title:       "有効なタイトル",
+				DueDatetime: strPtr(dt),
+			}
+			assert.NoError(t, req.Validate(), "valid datetime: %s", dt)
+		}
+
+		invalidDueDatetimes := []string{
+			"invalid-date",
+			"2026-13-45",
+			"2026/08/20",
+			"2026-08-20 23:59:00",
+		}
+		for _, dt := range invalidDueDatetimes {
+			req := CreateTaskRequest{
+				Title:       "有効なタイトル",
+				DueDatetime: strPtr(dt),
+			}
+			err := req.Validate()
+			require.Error(t, err, "invalid datetime: %s", dt)
+			appErr, ok := err.(*AppError)
+			require.True(t, ok)
+			require.Len(t, appErr.Details, 1)
+			assert.Equal(t, "due_datetime", appErr.Details[0].Field)
+		}
+	})
+
+	t.Run("境界値/異常系: 繰り返しルールの期間が1年以内の場合は通過し、1年を超える場合はエラーとなること", func(t *testing.T) {
+		// 1年以内（同年月日の1年後）: 正常
+		reqValid := CreateTaskRequest{
+			Title:       "有効なタイトル",
+			IsRecurring: boolPtr(true),
+			RecurringRule: &RecurringRule{
+				StartDate:  "2026-08-22",
+				EndDate:    "2027-08-22",
+				DaysOfWeek: []string{"saturday"},
+			},
+		}
+		assert.NoError(t, reqValid.Validate())
+
+		// 1年超（1年後 + 1日）: エラー
+		reqInvalid := CreateTaskRequest{
+			Title:       "有効なタイトル",
+			IsRecurring: boolPtr(true),
+			RecurringRule: &RecurringRule{
+				StartDate:  "2026-08-22",
+				EndDate:    "2027-08-23",
+				DaysOfWeek: []string{"saturday"},
+			},
+		}
+		err := reqInvalid.Validate()
+		require.Error(t, err)
+		appErr, ok := err.(*AppError)
+		require.True(t, ok)
+		require.Len(t, appErr.Details, 1)
+		assert.Equal(t, "recurring_rule.end_date", appErr.Details[0].Field)
+		assert.Equal(t, "終了日は開始日から1年以内の日付を指定してください。", appErr.Details[0].Message)
+	})
 }

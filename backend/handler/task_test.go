@@ -197,6 +197,9 @@ func TestCreateTaskHandler(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "UNAUTHORIZED", errResp.Error.Code)
 		assert.NotEmpty(t, errResp.Error.Message)
+		assert.NotNil(t, errResp.Error.Details)
+		assert.Empty(t, errResp.Error.Details)
+		assert.Contains(t, w.Body.String(), `"details":[]`)
 	})
 
 	t.Run("異常系: リクエストバリデーション違反時に 400 BAD_REQUEST と詳細 details を返すこと", func(t *testing.T) {
@@ -237,7 +240,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		assert.Equal(t, "タイトルは必須です。", errResp.Error.Details[0].Message)
 	})
 
-	t.Run("異常系: 不正な JSON ボディの場合に 400 BAD_REQUEST を返すこと", func(t *testing.T) {
+	t.Run("異常系: 不正な JSON ボディの場合に 400 BAD_REQUEST と空の details 配列を返すこと", func(t *testing.T) {
 		mockSvc := &mockTaskService{}
 
 		invalidJSON := `{"title": "不正なJSON`
@@ -258,5 +261,41 @@ func TestCreateTaskHandler(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "BAD_REQUEST", errResp.Error.Code)
 		assert.NotEmpty(t, errResp.Error.Message)
+		assert.NotNil(t, errResp.Error.Details)
+		assert.Empty(t, errResp.Error.Details)
+		assert.Contains(t, w.Body.String(), `"details":[]`)
+	})
+
+	t.Run("異常系: サーバー内部エラー発生時に 500 INTERNAL_SERVER_ERROR と空の details 配列を返すこと", func(t *testing.T) {
+		mockSvc := &mockTaskService{
+			createTaskFunc: func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
+				return nil, assert.AnError
+			},
+		}
+
+		reqBody := `{
+			"title": "有効なタイトル",
+			"priority": "medium"
+		}`
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+
+		h := CreateTaskHandler(mockSvc)
+		h(c)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var errResp model.ErrorResponse
+		err := json.Unmarshal(w.Body.Bytes(), &errResp)
+		require.NoError(t, err)
+		assert.Equal(t, "INTERNAL_SERVER_ERROR", errResp.Error.Code)
+		assert.NotEmpty(t, errResp.Error.Message)
+		assert.NotNil(t, errResp.Error.Details)
+		assert.Empty(t, errResp.Error.Details)
+		assert.Contains(t, w.Body.String(), `"details":[]`)
 	})
 }

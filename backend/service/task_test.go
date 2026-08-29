@@ -357,4 +357,29 @@ func TestTaskService_CreateTask(t *testing.T) {
 		assert.Equal(t, 1, repo.createTaskCalls)
 		assert.Equal(t, 0, repo.createTasksCalls)
 	})
+
+	t.Run("正常系: 前後空白付きタイトルおよび改行コードを含むコメントが正規化されて永続化・返却されること", func(t *testing.T) {
+		repo := &mockTaskRepository{
+			createTaskFunc: func(ctx context.Context, task *model.Task) error {
+				assert.Equal(t, "課題レポート提出", task.Title)
+				assert.Equal(t, "第1行\n第2行", task.Comment)
+				return nil
+			},
+		}
+		svc := NewTaskService(repo)
+
+		req := &model.CreateTaskRequest{
+			Title:    "  課題レポート提出　　",
+			Comment:  "  第1行\r\n第2行\r\n  ",
+			Priority: "medium",
+		}
+
+		res, err := svc.CreateTask(context.Background(), userID, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Len(t, res.Tasks, 1)
+		assert.Equal(t, "課題レポート提出", res.Tasks[0].Title)
+		assert.Equal(t, "第1行\n第2行", res.Tasks[0].Comment)
+	})
 }

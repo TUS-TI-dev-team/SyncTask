@@ -17,7 +17,7 @@ type ErrorBody struct {
 	// Message はエラーメッセージです
 	Message string `json:"message" example:"入力内容に不備があります。"`
 	// Details は各フィールドのエラー詳細リストです
-	Details []ErrorDetail `json:"details,omitempty"`
+	Details []ErrorDetail `json:"details"`
 }
 
 // ErrorResponse は API 共通のエラーレスポンス形式を表します。
@@ -40,6 +40,9 @@ func (e *AppError) Error() string {
 
 // NewBadRequestError は 400 Bad Request 用の AppError を生成します。
 func NewBadRequestError(message string, details []ErrorDetail) *AppError {
+	if details == nil {
+		details = []ErrorDetail{}
+	}
 	return &AppError{
 		StatusCode: 400,
 		Code:       "BAD_REQUEST",
@@ -54,5 +57,20 @@ func NewUnauthorizedError(message string) *AppError {
 		StatusCode: 401,
 		Code:       "UNAUTHORIZED",
 		Message:    message,
+		Details:    []ErrorDetail{},
+	}
+}
+
+// NewErrorResponse は API 共通形式の ErrorResponse を生成します。
+func NewErrorResponse(code, message string, details []ErrorDetail) ErrorResponse {
+	if details == nil {
+		details = []ErrorDetail{}
+	}
+	return ErrorResponse{
+		Error: ErrorBody{
+			Code:    code,
+			Message: message,
+			Details: details,
+		},
 	}
 }

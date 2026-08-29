@@ -97,8 +97,8 @@ func (r *CreateTaskRequest) Validate() error {
 	var details []ErrorDetail
 
 	// 1. タイトル検証
-	trimmedTitle := strings.TrimSpace(r.Title)
-	if trimmedTitle == "" {
+	r.Title = strings.TrimSpace(r.Title)
+	if r.Title == "" {
 		details = append(details, ErrorDetail{
 			Field:   "title",
 			Message: "タイトルは必須です。",
@@ -108,7 +108,7 @@ func (r *CreateTaskRequest) Validate() error {
 			Field:   "title",
 			Message: "タイトルに改行やタブを含めることはできません。",
 		})
-	} else if utf8.RuneCountInString(trimmedTitle) > 100 {
+	} else if utf8.RuneCountInString(r.Title) > 100 {
 		details = append(details, ErrorDetail{
 			Field:   "title",
 			Message: "タイトルは100文字以内で入力してください。",
@@ -116,6 +116,10 @@ func (r *CreateTaskRequest) Validate() error {
 	}
 
 	// 2. コメント検証
+	comment := strings.TrimSpace(r.Comment)
+	comment = strings.ReplaceAll(comment, "\r\n", "\n")
+	comment = strings.ReplaceAll(comment, "\r", "\n")
+	r.Comment = comment
 	if utf8.RuneCountInString(r.Comment) > 1000 {
 		details = append(details, ErrorDetail{
 			Field:   "comment",
@@ -131,7 +135,32 @@ func (r *CreateTaskRequest) Validate() error {
 		})
 	}
 
-	// 4. 繰り返しタスクルールの検証
+	// 4. 締切日時検証（単一作成時）
+	if r.IsRecurring == nil || !*r.IsRecurring {
+		if r.DueDatetime != nil && *r.DueDatetime != "" {
+			dueStr := *r.DueDatetime
+			var valid bool
+			if len(dueStr) == 10 {
+				if _, err := time.Parse("2006-01-02", dueStr); err == nil {
+					valid = true
+				}
+			} else {
+				if _, err := time.Parse(time.RFC3339, dueStr); err == nil {
+					valid = true
+				} else if _, err := time.Parse("2006-01-02T15:04:05", dueStr); err == nil {
+					valid = true
+				}
+			}
+			if !valid {
+				details = append(details, ErrorDetail{
+					Field:   "due_datetime",
+					Message: "締切日時の形式が不正です（ISO 8601 または YYYY-MM-DD）。",
+				})
+			}
+		}
+	}
+
+	// 5. 繰り返しタスクルールの検証
 	if r.IsRecurring != nil && *r.IsRecurring {
 		if r.RecurringRule == nil {
 			details = append(details, ErrorDetail{
@@ -179,6 +208,11 @@ func (r *CreateTaskRequest) Validate() error {
 					details = append(details, ErrorDetail{
 						Field:   "recurring_rule",
 						Message: "開始日は終了日以前の日付を指定してください。",
+					})
+				} else if startT.AddDate(1, 0, 0).Before(endT) {
+					details = append(details, ErrorDetail{
+						Field:   "recurring_rule.end_date",
+						Message: "終了日は開始日から1年以内の日付を指定してください。",
 					})
 				}
 			}
