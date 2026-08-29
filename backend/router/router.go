@@ -1,6 +1,7 @@
 package router
 
 import (
+	"database/sql"
 	"net/http"
 
 	_ "synctask/backend/docs"
@@ -15,7 +16,7 @@ import (
 //
 // 開発モード（gin.Mode() != gin.ReleaseMode）の場合にのみ、
 // /health-check エンドポイントおよび /swagger/*any (Swagger UI) が有効化されます。
-func SetupRouter() *gin.Engine {
+func SetupRouter(db *sql.DB) *gin.Engine {
 	r := gin.Default()
 
 	// ルートエンドポイント
@@ -28,7 +29,7 @@ func SetupRouter() *gin.Engine {
 	// 開発時のみ有効なルート設定
 	if gin.Mode() != gin.ReleaseMode {
 		// ヘルスチェックエンドポイント
-		r.GET("/health-check", handler.HealthCheckHandler)
+		r.GET("/health-check", handler.HealthCheckHandler(db))
 
 		// Swagger UI エンドポイント
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
