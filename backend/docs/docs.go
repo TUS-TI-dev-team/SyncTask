@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/health-check": {
             "get": {
-                "description": "サーバーの稼働状態を確認します（開発モード時のみ有効）。",
+                "description": "サーバーおよびデータベースの稼働状態を確認します（開発モード時のみ有効）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -43,6 +43,11 @@ const docTemplate = `{
         "handler.HealthResponse": {
             "type": "object",
             "properties": {
+                "database": {
+                    "description": "Database はデータベースの接続状態を示します（例: \"connected\", \"disconnected\"）",
+                    "type": "string",
+                    "example": "connected"
+                },
                 "message": {
                     "description": "Message はヘルスチェックに関する補足メッセージです（例: \"healthy\"）",
                     "type": "string",

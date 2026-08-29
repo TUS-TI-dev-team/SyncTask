@@ -2,6 +2,10 @@ basePath: /
 definitions:
   handler.HealthResponse:
     properties:
+      database:
+        description: 'Database はデータベースの接続状態を示します（例: "connected", "disconnected"）'
+        example: connected
+        type: string
       message:
         description: 'Message はヘルスチェックに関する補足メッセージです（例: "healthy"）'
         example: healthy
@@ -22,7 +26,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: サーバーの稼働状態を確認します（開発モード時のみ有効）。
+      description: サーバーおよびデータベースの稼働状態を確認します（開発モード時のみ有効）。
       produces:
       - application/json
       responses:
