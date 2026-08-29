@@ -9,6 +9,58 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/tasks": {
+            "post": {
+                "description": "新規タスクを作成します。単一タスクの登録、および繰り返しルールに基づくタスクの一括即時生成（最大100件）に対応します。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tasks"
+                ],
+                "summary": "新規タスク作成",
+                "parameters": [
+                    {
+                        "description": "タスク作成リクエスト",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.CreateTaskRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "タスク作成成功",
+                        "schema": {
+                            "$ref": "#/definitions/model.CreateTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "不正なリクエスト形式またはバリデーションエラー",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "認証エラー（未ログイン）",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバー内部エラー",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health-check": {
             "get": {
                 "description": "サーバーおよびデータベースの稼働状態を確認します（開発モード時のみ有効）。",
@@ -51,6 +103,216 @@
                     "description": "Status はサーバーの現在のステータスを示します（例: \"ok\"）",
                     "type": "string",
                     "example": "ok"
+                }
+            }
+        },
+        "model.CreateTaskRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "description": "Comment はタスクの補足コメントです（0〜1000文字）",
+                    "type": "string",
+                    "example": "第5章の要約を含むこと"
+                },
+                "due_datetime": {
+                    "description": "DueDatetime は締切日時です（ISO 8601形式またはYYYY-MM-DD）",
+                    "type": "string",
+                    "example": "2026-08-20T23:59:00+09:00"
+                },
+                "is_pinned": {
+                    "description": "IsPinned はピン留めフラグです（デフォルト: false）",
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_recurring": {
+                    "description": "IsRecurring は繰り返し一括生成フラグです（デフォルト: false）",
+                    "type": "boolean",
+                    "example": false
+                },
+                "priority": {
+                    "description": "Priority は優先度です（high, medium, low、デフォルト: medium）",
+                    "type": "string",
+                    "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                    ],
+                    "example": "high"
+                },
+                "recurring_rule": {
+                    "description": "RecurringRule は繰り返し生成ルールです（IsRecurringがtrueの場合に必須）",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.RecurringRule"
+                        }
+                    ]
+                },
+                "title": {
+                    "description": "Title はタスクのタイトルです（1〜100文字、必須）",
+                    "type": "string",
+                    "example": "課題レポート提出"
+                }
+            }
+        },
+        "model.CreateTaskResponse": {
+            "type": "object",
+            "properties": {
+                "created_count": {
+                    "description": "CreatedCount は作成されたタスクの件数です",
+                    "type": "integer",
+                    "example": 1
+                },
+                "tasks": {
+                    "description": "Tasks は作成されたタスクのリストです",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Task"
+                    }
+                }
+            }
+        },
+        "model.ErrorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code はエラーコードです（例: \"BAD_REQUEST\", \"UNAUTHORIZED\", \"INTERNAL_SERVER_ERROR\"）",
+                    "type": "string",
+                    "example": "BAD_REQUEST"
+                },
+                "details": {
+                    "description": "Details は各フィールドのエラー詳細リストです",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.ErrorDetail"
+                    }
+                },
+                "message": {
+                    "description": "Message はエラーメッセージです",
+                    "type": "string",
+                    "example": "入力内容に不備があります。"
+                }
+            }
+        },
+        "model.ErrorDetail": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "description": "Field はエラーが発生したフィールド名です",
+                    "type": "string",
+                    "example": "title"
+                },
+                "message": {
+                    "description": "Message はフィールドに関するエラーメッセージです",
+                    "type": "string",
+                    "example": "タイトルは必須です。"
+                }
+            }
+        },
+        "model.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error はエラーの詳細情報です",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.ErrorBody"
+                        }
+                    ]
+                }
+            }
+        },
+        "model.RecurringRule": {
+            "type": "object",
+            "properties": {
+                "days_of_week": {
+                    "description": "DaysOfWeek は繰り返す曜日のリストです（monday, tuesday, wednesday, thursday, friday, saturday, sunday）",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "saturday"
+                    ]
+                },
+                "due_time": {
+                    "description": "DueTime は締切時刻です（HH:mm形式、デフォルト: 23:59）",
+                    "type": "string",
+                    "example": "18:00"
+                },
+                "end_date": {
+                    "description": "EndDate は繰り返し終了日です（YYYY-MM-DD形式、最大1年間）",
+                    "type": "string",
+                    "example": "2026-10-31"
+                },
+                "start_date": {
+                    "description": "StartDate は繰り返し開始日です（YYYY-MM-DD形式）",
+                    "type": "string",
+                    "example": "2026-08-22"
+                }
+            }
+        },
+        "model.Task": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "description": "Comment はタスクの補足コメント・詳細説明です（0〜1000文字）",
+                    "type": "string",
+                    "example": "第5章の要約を含むこと"
+                },
+                "created_at": {
+                    "description": "CreatedAt は作成日時です",
+                    "type": "string",
+                    "example": "2026-08-17T12:00:00+09:00"
+                },
+                "due_datetime": {
+                    "description": "DueDatetime は締切日時です（ISO 8601形式）",
+                    "type": "string",
+                    "example": "2026-08-20T23:59:00+09:00"
+                },
+                "id": {
+                    "description": "ID はタスクの一意識別子（UUID）です",
+                    "type": "string",
+                    "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                },
+                "is_pinned": {
+                    "description": "IsPinned はピン留めフラグです",
+                    "type": "boolean",
+                    "example": false
+                },
+                "priority": {
+                    "description": "Priority は優先度です（high, medium, low）",
+                    "type": "string",
+                    "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                    ],
+                    "example": "high"
+                },
+                "status": {
+                    "description": "Status はタスクのステータスです（not_started, in_progress, completed）",
+                    "type": "string",
+                    "enum": [
+                        "not_started",
+                        "in_progress",
+                        "completed"
+                    ],
+                    "example": "not_started"
+                },
+                "title": {
+                    "description": "Title はタスクのタイトルです（1〜100文字）",
+                    "type": "string",
+                    "example": "課題レポート提出"
+                },
+                "updated_at": {
+                    "description": "UpdatedAt は更新日時です",
+                    "type": "string",
+                    "example": "2026-08-17T12:00:00+09:00"
+                },
+                "user_id": {
+                    "description": "UserID は所有ユーザーの一意識別子（UUID）です",
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
                 }
             }
         }

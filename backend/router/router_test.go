@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -77,4 +78,22 @@ func TestSetupRouter_HealthCheck_ReleaseMode(t *testing.T) {
 
 	// テスト後にモードを元に戻す
 	gin.SetMode(gin.TestMode)
+}
+
+func TestSetupRouter_Tasks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	r := SetupRouter(db)
+
+	// 未認証（userIDなし）で POST /api/tasks にアクセスすると 401 が返る（ルートが正しくハンドラーに到達している確認）
+	req, _ := http.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(`{"title":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

@@ -6,6 +6,8 @@ import (
 
 	_ "synctask/backend/docs"
 	"synctask/backend/handler"
+	"synctask/backend/repository"
+	"synctask/backend/service"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -33,6 +35,16 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 
 		// Swagger UI エンドポイント
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
+
+	// 依存性の注入 (DI)
+	taskRepo := repository.NewTaskRepository(db)
+	taskService := service.NewTaskService(taskRepo)
+
+	// API ルーティング
+	api := r.Group("/api")
+	{
+		api.POST("/tasks", handler.CreateTaskHandler(taskService))
 	}
 
 	return r
