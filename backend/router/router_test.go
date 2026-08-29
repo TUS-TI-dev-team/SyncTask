@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"synctask/backend/handler"
@@ -78,6 +79,29 @@ func TestSetupRouter_HealthCheck_ReleaseMode(t *testing.T) {
 
 	// テスト後にモードを元に戻す
 	gin.SetMode(gin.TestMode)
+}
+
+func TestSetupRouter_LoginRoute(t *testing.T) {
+	previousMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(previousMode) })
+
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	mock.ExpectExec("INSERT INTO ACCESS_LOG").
+		WithArgs(sqlmock.AnyArg(), nil, sqlmock.AnyArg(), "POST auth/login", nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	r := SetupRouter(db)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestSetupRouter_Tasks(t *testing.T) {

@@ -32,6 +32,7 @@ type AppError struct {
 	Code       string
 	Message    string
 	Details    []ErrorDetail
+	RetryAfter int
 }
 
 func (e *AppError) Error() string {
@@ -62,6 +63,17 @@ func NewUnauthorizedError(message string) *AppError {
 }
 
 // NewErrorResponse は API 共通形式の ErrorResponse を生成します。
+
+// NewRateLimitError は 429 Too Many Requests 用の AppError を生成します。
+func NewRateLimitError(message string, retryAfter int) *AppError {
+	return &AppError{
+		StatusCode: 429,
+		Code:       "RATE_LIMIT_EXCEEDED",
+		Message:    message,
+		Details:    []ErrorDetail{},
+		RetryAfter: retryAfter,
+	}
+}
 func NewErrorResponse(code, message string, details []ErrorDetail) ErrorResponse {
 	if details == nil {
 		details = []ErrorDetail{}
