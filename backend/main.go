@@ -16,15 +16,15 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if err := db.Migrate(cfg.DB); err != nil {
+		log.Fatalf("マイグレーションに失敗しました: %v", err)
+	}
+
 	database, err := db.Connect(cfg.DB)
 	if err != nil {
 		log.Fatalf("DB接続に失敗しました: %v", err)
 	}
 	defer database.Close()
-
-	if err := db.Migrate(database); err != nil {
-		log.Fatalf("マイグレーションに失敗しました: %v", err)
-	}
 
 	r := router.SetupRouter(database)
 

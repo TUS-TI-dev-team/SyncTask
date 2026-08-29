@@ -30,19 +30,26 @@ func Connect(cfg config.DBConfig) (*sql.DB, error) {
 }
 
 // Migrate は埋め込まれたマイグレーションファイルを順次実行します。
-func Migrate(db *sql.DB) error {
+func Migrate(cfg config.DBConfig) error {
 	src, err := iofs.New(migrationFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("failed to create iofs driver: %w", err)
 	}
 
-	driver, err := pgx_migrate.WithInstance(db, &pgx_migrate.Config{})
+	migrationDB, err := Connect(cfg)
 	if err != nil {
+		return fmt.Errorf("failed to connect database for migration: %w", err)
+	}
+
+	driver, err := pgx_migrate.WithInstance(migrationDB, &pgx_migrate.Config{})
+	if err != nil {
+		migrationDB.Close()
 		return fmt.Errorf("failed to create pgx migration driver: %w", err)
 	}
 
 	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
 	if err != nil {
+		migrationDB.Close()
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
 	defer m.Close()
