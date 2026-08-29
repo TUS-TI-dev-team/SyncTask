@@ -19,11 +19,19 @@ import (
 // mockTaskService はテスト用の TaskService モックです。
 type mockTaskService struct {
 	createTaskFunc func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error)
+	getTaskFunc    func(ctx context.Context, userID, taskID string) (*model.GetTaskResponse, error)
 }
 
 func (m *mockTaskService) CreateTask(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
 	if m.createTaskFunc != nil {
 		return m.createTaskFunc(ctx, userID, req)
+	}
+	return nil, nil
+}
+
+func (m *mockTaskService) GetTask(ctx context.Context, userID, taskID string) (*model.GetTaskResponse, error) {
+	if m.getTaskFunc != nil {
+		return m.getTaskFunc(ctx, userID, taskID)
 	}
 	return nil, nil
 }
