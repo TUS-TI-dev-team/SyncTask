@@ -97,3 +97,20 @@ func TestSetupRouter_Tasks(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+func TestSetupRouter_GetTask(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	r := SetupRouter(db)
+
+	// 未認証（userIDなし）で GET /api/tasks/:task_id にアクセスすると 401 が返る（ルートが正しくハンドラーに到達している確認）
+	req, _ := http.NewRequest(http.MethodGet, "/api/tasks/7c9e6679-7425-40de-944b-e07fc1f90ae7", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}

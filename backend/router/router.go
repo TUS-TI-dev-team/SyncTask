@@ -45,6 +45,7 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 	api := r.Group("/api")
 	{
 		api.POST("/tasks", handler.CreateTaskHandler(taskService))
+		api.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
 	}
 
 	return r
