@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "herdr": {
+      "source": "herdrdev/herdr",
+      "sourceType": "github",
+      "skillPath": "skills/herdr/SKILL.md",
+      "computedHash": "e7b27dca5073e9306fc9ca1e152947379adfb52be40c2ef60ee6ca7bc2ca5680"
+    },
     "review": {
       "source": "wxmb01/review-skill",
       "sourceType": "github",
