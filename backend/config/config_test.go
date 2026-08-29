@@ -11,6 +11,8 @@ func TestLoad_Defaults(t *testing.T) {
 	// 一時的に環境変数をクリア
 	os.Unsetenv("GIN_MODE")
 	os.Unsetenv("FRONTEND_URL")
+	os.Unsetenv("COOKIE_SECURE")
+	os.Unsetenv("TRUSTED_PROXIES")
 	os.Unsetenv("DB_HOST")
 	os.Unsetenv("DB_PORT")
 	os.Unsetenv("DB_USER")
@@ -25,6 +27,8 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "localhost", cfg.DB.Host)
 	assert.Equal(t, "5432", cfg.DB.Port)
 	assert.Equal(t, "synctask", cfg.DB.User)
+	assert.False(t, cfg.CookieSecure)
+	assert.Empty(t, cfg.TrustedProxies)
 	assert.Equal(t, "synctask_pass", cfg.DB.Password)
 	assert.Equal(t, "synctask_dev", cfg.DB.Name)
 	assert.Equal(t, "disable", cfg.DB.SSLMode)
@@ -40,11 +44,15 @@ func TestLoad_CustomEnv(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "custom_pass")
 	t.Setenv("DB_NAME", "custom_db")
 	t.Setenv("DB_SSLMODE", "require")
+	t.Setenv("COOKIE_SECURE", "true")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8,192.0.2.10")
 
 	cfg := Load()
 
 	assert.Equal(t, "release", cfg.GinMode)
 	assert.Equal(t, "https://synctask.app", cfg.FrontendURL)
+	assert.True(t, cfg.CookieSecure)
+	assert.Equal(t, []string{"10.0.0.0/8", "192.0.2.10"}, cfg.TrustedProxies)
 	assert.Equal(t, "db", cfg.DB.Host)
 	assert.Equal(t, "5433", cfg.DB.Port)
 	assert.Equal(t, "custom_user", cfg.DB.User)
