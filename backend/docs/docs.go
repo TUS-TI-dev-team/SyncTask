@@ -67,6 +67,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/tasks/{task_id}": {
+            "get": {
+                "description": "指定されたタスクIDの詳細情報を取得します。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tasks"
+                ],
+                "summary": "タスク詳細取得",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "タスクID（UUID）",
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "タスク詳細取得成功",
+                        "schema": {
+                            "$ref": "#/definitions/model.GetTaskResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "認証エラー（未ログイン）",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "タスクが存在しない、または他ユーザー所有",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバー内部エラー",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health-check": {
             "get": {
                 "description": "サーバーおよびデータベースの稼働状態を確認します（開発モード時のみ有効）。",
@@ -181,7 +231,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
-                    "description": "Code はエラーコードです（例: \"BAD_REQUEST\", \"UNAUTHORIZED\", \"INTERNAL_SERVER_ERROR\"）",
+                    "description": "Code はエラーコードです（例: \"BAD_REQUEST\", \"UNAUTHORIZED\", \"NOT_FOUND\", \"INTERNAL_SERVER_ERROR\"）",
                     "type": "string",
                     "example": "BAD_REQUEST"
                 },
@@ -222,6 +272,19 @@ const docTemplate = `{
                     "allOf": [
                         {
                             "$ref": "#/definitions/model.ErrorBody"
+                        }
+                    ]
+                }
+            }
+        },
+        "model.GetTaskResponse": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "description": "Task は詳細取得されたタスクオブジェクトです",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.Task"
                         }
                     ]
                 }
