@@ -10,6 +10,20 @@ import (
 )
 
 // CreateTaskHandler は POST /api/tasks のハンドラーを返します。
+//
+// 新規タスクを作成します。単一タスクの登録、および繰り返しルールに基づくタスクの一括即時生成（最大100件）に対応します。
+//
+// @Summary 新規タスク作成
+// @Description 新規タスクを作成します。単一タスクの登録、および繰り返しルールに基づくタスクの一括即時生成（最大100件）に対応します。
+// @Tags Tasks
+// @Accept json
+// @Produce json
+// @Param request body model.CreateTaskRequest true "タスク作成リクエスト"
+// @Success 201 {object} model.CreateTaskResponse "タスク作成成功"
+// @Failure 400 {object} model.ErrorResponse "不正なリクエスト形式またはバリデーションエラー"
+// @Failure 401 {object} model.ErrorResponse "認証エラー（未ログイン）"
+// @Failure 500 {object} model.ErrorResponse "サーバー内部エラー"
+// @Router /api/tasks [post]
 func CreateTaskHandler(service service.TaskService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userID")

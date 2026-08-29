@@ -10,42 +10,66 @@ import (
 
 // Task はタスクエンティティを表します。
 type Task struct {
-	ID          string     `json:"id"`
-	UserID      string     `json:"user_id"`
-	Title       string     `json:"title"`
-	Comment     string     `json:"comment"`
-	Priority    string     `json:"priority"`
-	Status      string     `json:"status"`
-	DueDatetime *time.Time `json:"due_datetime"`
-	IsPinned    bool       `json:"is_pinned"`
-	SearchText  string     `json:"-"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	// ID はタスクの一意識別子（UUID）です
+	ID string `json:"id" example:"7c9e6679-7425-40de-944b-e07fc1f90ae7"`
+	// UserID は所有ユーザーの一意識別子（UUID）です
+	UserID string `json:"user_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	// Title はタスクのタイトルです（1〜100文字）
+	Title string `json:"title" example:"課題レポート提出"`
+	// Comment はタスクの補足コメント・詳細説明です（0〜1000文字）
+	Comment string `json:"comment" example:"第5章の要約を含むこと"`
+	// Priority は優先度です（high, medium, low）
+	Priority string `json:"priority" example:"high" enums:"high,medium,low"`
+	// Status はタスクのステータスです（not_started, in_progress, completed）
+	Status string `json:"status" example:"not_started" enums:"not_started,in_progress,completed"`
+	// DueDatetime は締切日時です（ISO 8601形式）
+	DueDatetime *time.Time `json:"due_datetime" example:"2026-08-20T23:59:00+09:00"`
+	// IsPinned はピン留めフラグです
+	IsPinned bool `json:"is_pinned" example:"false"`
+	// SearchText は検索用の正規化文字列です（JSON出力対象外）
+	SearchText string `json:"-"`
+	// CreatedAt は作成日時です
+	CreatedAt time.Time `json:"created_at" example:"2026-08-17T12:00:00+09:00"`
+	// UpdatedAt は更新日時です
+	UpdatedAt time.Time `json:"updated_at" example:"2026-08-17T12:00:00+09:00"`
 }
 
 // RecurringRule は繰り返しタスク生成ルールを表します。
 type RecurringRule struct {
-	StartDate  string   `json:"start_date"`
-	EndDate    string   `json:"end_date"`
-	DaysOfWeek []string `json:"days_of_week"`
-	DueTime    string   `json:"due_time"`
+	// StartDate は繰り返し開始日です（YYYY-MM-DD形式）
+	StartDate string `json:"start_date" example:"2026-08-22"`
+	// EndDate は繰り返し終了日です（YYYY-MM-DD形式、最大1年間）
+	EndDate string `json:"end_date" example:"2026-10-31"`
+	// DaysOfWeek は繰り返す曜日のリストです（monday, tuesday, wednesday, thursday, friday, saturday, sunday）
+	DaysOfWeek []string `json:"days_of_week" example:"saturday"`
+	// DueTime は締切時刻です（HH:mm形式、デフォルト: 23:59）
+	DueTime string `json:"due_time" example:"18:00"`
 }
 
 // CreateTaskRequest はタスク新規作成リクエストボディを表します。
 type CreateTaskRequest struct {
-	Title         string         `json:"title"`
-	Comment       string         `json:"comment"`
-	Priority      string         `json:"priority"`
-	DueDatetime   *string        `json:"due_datetime"`
-	IsPinned      *bool          `json:"is_pinned"`
-	IsRecurring   *bool          `json:"is_recurring"`
+	// Title はタスクのタイトルです（1〜100文字、必須）
+	Title string `json:"title" example:"課題レポート提出"`
+	// Comment はタスクの補足コメントです（0〜1000文字）
+	Comment string `json:"comment" example:"第5章の要約を含むこと"`
+	// Priority は優先度です（high, medium, low、デフォルト: medium）
+	Priority string `json:"priority" example:"high" enums:"high,medium,low"`
+	// DueDatetime は締切日時です（ISO 8601形式またはYYYY-MM-DD）
+	DueDatetime *string `json:"due_datetime" example:"2026-08-20T23:59:00+09:00"`
+	// IsPinned はピン留めフラグです（デフォルト: false）
+	IsPinned *bool `json:"is_pinned" example:"false"`
+	// IsRecurring は繰り返し一括生成フラグです（デフォルト: false）
+	IsRecurring *bool `json:"is_recurring" example:"false"`
+	// RecurringRule は繰り返し生成ルールです（IsRecurringがtrueの場合に必須）
 	RecurringRule *RecurringRule `json:"recurring_rule"`
 }
 
 // CreateTaskResponse はタスク新規作成成功時のレスポンスを表します。
 type CreateTaskResponse struct {
-	CreatedCount int     `json:"created_count"`
-	Tasks        []*Task `json:"tasks"`
+	// CreatedCount は作成されたタスクの件数です
+	CreatedCount int `json:"created_count" example:"1"`
+	// Tasks は作成されたタスクのリストです
+	Tasks []*Task `json:"tasks"`
 }
 
 var (

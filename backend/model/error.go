@@ -4,19 +4,25 @@ import "fmt"
 
 // ErrorDetail は各フィールドのエラー詳細を表します。
 type ErrorDetail struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
+	// Field はエラーが発生したフィールド名です
+	Field string `json:"field" example:"title"`
+	// Message はフィールドに関するエラーメッセージです
+	Message string `json:"message" example:"タイトルは必須です。"`
 }
 
 // ErrorBody はエラーレスポンスの本体を表します。
 type ErrorBody struct {
-	Code    string        `json:"code"`
-	Message string        `json:"message"`
+	// Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "INTERNAL_SERVER_ERROR"）
+	Code string `json:"code" example:"BAD_REQUEST"`
+	// Message はエラーメッセージです
+	Message string `json:"message" example:"入力内容に不備があります。"`
+	// Details は各フィールドのエラー詳細リストです
 	Details []ErrorDetail `json:"details,omitempty"`
 }
 
 // ErrorResponse は API 共通のエラーレスポンス形式を表します。
 type ErrorResponse struct {
+	// Error はエラーの詳細情報です
 	Error ErrorBody `json:"error"`
 }
 

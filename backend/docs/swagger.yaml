@@ -15,6 +15,161 @@ definitions:
         example: ok
         type: string
     type: object
+  model.CreateTaskRequest:
+    properties:
+      comment:
+        description: Comment はタスクの補足コメントです（0〜1000文字）
+        example: 第5章の要約を含むこと
+        type: string
+      due_datetime:
+        description: DueDatetime は締切日時です（ISO 8601形式またはYYYY-MM-DD）
+        example: "2026-08-20T23:59:00+09:00"
+        type: string
+      is_pinned:
+        description: 'IsPinned はピン留めフラグです（デフォルト: false）'
+        example: false
+        type: boolean
+      is_recurring:
+        description: 'IsRecurring は繰り返し一括生成フラグです（デフォルト: false）'
+        example: false
+        type: boolean
+      priority:
+        description: 'Priority は優先度です（high, medium, low、デフォルト: medium）'
+        enum:
+        - high
+        - medium
+        - low
+        example: high
+        type: string
+      recurring_rule:
+        allOf:
+        - $ref: '#/definitions/model.RecurringRule'
+        description: RecurringRule は繰り返し生成ルールです（IsRecurringがtrueの場合に必須）
+      title:
+        description: Title はタスクのタイトルです（1〜100文字、必須）
+        example: 課題レポート提出
+        type: string
+    type: object
+  model.CreateTaskResponse:
+    properties:
+      created_count:
+        description: CreatedCount は作成されたタスクの件数です
+        example: 1
+        type: integer
+      tasks:
+        description: Tasks は作成されたタスクのリストです
+        items:
+          $ref: '#/definitions/model.Task'
+        type: array
+    type: object
+  model.ErrorBody:
+    properties:
+      code:
+        description: 'Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "INTERNAL_SERVER_ERROR"）'
+        example: BAD_REQUEST
+        type: string
+      details:
+        description: Details は各フィールドのエラー詳細リストです
+        items:
+          $ref: '#/definitions/model.ErrorDetail'
+        type: array
+      message:
+        description: Message はエラーメッセージです
+        example: 入力内容に不備があります。
+        type: string
+    type: object
+  model.ErrorDetail:
+    properties:
+      field:
+        description: Field はエラーが発生したフィールド名です
+        example: title
+        type: string
+      message:
+        description: Message はフィールドに関するエラーメッセージです
+        example: タイトルは必須です。
+        type: string
+    type: object
+  model.ErrorResponse:
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/model.ErrorBody'
+        description: Error はエラーの詳細情報です
+    type: object
+  model.RecurringRule:
+    properties:
+      days_of_week:
+        description: DaysOfWeek は繰り返す曜日のリストです（monday, tuesday, wednesday, thursday,
+          friday, saturday, sunday）
+        example:
+        - saturday
+        items:
+          type: string
+        type: array
+      due_time:
+        description: 'DueTime は締切時刻です（HH:mm形式、デフォルト: 23:59）'
+        example: "18:00"
+        type: string
+      end_date:
+        description: EndDate は繰り返し終了日です（YYYY-MM-DD形式、最大1年間）
+        example: "2026-10-31"
+        type: string
+      start_date:
+        description: StartDate は繰り返し開始日です（YYYY-MM-DD形式）
+        example: "2026-08-22"
+        type: string
+    type: object
+  model.Task:
+    properties:
+      comment:
+        description: Comment はタスクの補足コメント・詳細説明です（0〜1000文字）
+        example: 第5章の要約を含むこと
+        type: string
+      created_at:
+        description: CreatedAt は作成日時です
+        example: "2026-08-17T12:00:00+09:00"
+        type: string
+      due_datetime:
+        description: DueDatetime は締切日時です（ISO 8601形式）
+        example: "2026-08-20T23:59:00+09:00"
+        type: string
+      id:
+        description: ID はタスクの一意識別子（UUID）です
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        type: string
+      is_pinned:
+        description: IsPinned はピン留めフラグです
+        example: false
+        type: boolean
+      priority:
+        description: Priority は優先度です（high, medium, low）
+        enum:
+        - high
+        - medium
+        - low
+        example: high
+        type: string
+      status:
+        description: Status はタスクのステータスです（not_started, in_progress, completed）
+        enum:
+        - not_started
+        - in_progress
+        - completed
+        example: not_started
+        type: string
+      title:
+        description: Title はタスクのタイトルです（1〜100文字）
+        example: 課題レポート提出
+        type: string
+      updated_at:
+        description: UpdatedAt は更新日時です
+        example: "2026-08-17T12:00:00+09:00"
+        type: string
+      user_id:
+        description: UserID は所有ユーザーの一意識別子（UUID）です
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -22,6 +177,40 @@ info:
   title: SyncTask API
   version: "1.0"
 paths:
+  /api/tasks:
+    post:
+      consumes:
+      - application/json
+      description: 新規タスクを作成します。単一タスクの登録、および繰り返しルールに基づくタスクの一括即時生成（最大100件）に対応します。
+      parameters:
+      - description: タスク作成リクエスト
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.CreateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: タスク作成成功
+          schema:
+            $ref: '#/definitions/model.CreateTaskResponse'
+        "400":
+          description: 不正なリクエスト形式またはバリデーションエラー
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: 認証エラー（未ログイン）
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: サーバー内部エラー
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: 新規タスク作成
+      tags:
+      - Tasks
   /health-check:
     get:
       consumes:
