@@ -174,6 +174,54 @@ func TestCreateTaskHandler(t *testing.T) {
 		assert.Equal(t, "task-2", resp.Tasks[1].ID)
 	})
 
+	t.Run("正常系: タイトルの空白トリムおよびコメントの改行正規化が適用されたタスクがレスポンスに含まれること", func(t *testing.T) {
+		now := time.Now()
+		mockResp := &model.CreateTaskResponse{
+			CreatedCount: 1,
+			Tasks: []*model.Task{
+				{
+					ID:        "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+					UserID:    "550e8400-e29b-41d4-a716-446655440000",
+					Title:     "課題レポート提出",
+					Comment:   "第1行\n第2行",
+					Priority:  "medium",
+					Status:    "not_started",
+					CreatedAt: now,
+					UpdatedAt: now,
+				},
+			},
+		}
+
+		mockSvc := &mockTaskService{
+			createTaskFunc: func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
+				return mockResp, nil
+			},
+		}
+
+		reqBody := `{
+			"title": "  課題レポート提出  ",
+			"comment": "第1行\r\n第2行",
+			"priority": "medium"
+		}`
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+
+		h := CreateTaskHandler(mockSvc)
+		h(c)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+
+		var resp model.CreateTaskResponse
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, "課題レポート提出", resp.Tasks[0].Title)
+		assert.Equal(t, "第1行\n第2行", resp.Tasks[0].Comment)
+	})
+
 	t.Run("異常系: 未ログイン（Context に userID なし）の場合に 401 UNAUTHORIZED を返すこと", func(t *testing.T) {
 		mockSvc := &mockTaskService{}
 

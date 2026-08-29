@@ -307,4 +307,45 @@ func TestCreateTaskRequest_Validate(t *testing.T) {
 		assert.Equal(t, "recurring_rule.end_date", appErr.Details[0].Field)
 		assert.Equal(t, "終了日は開始日から1年以内の日付を指定してください。", appErr.Details[0].Message)
 	})
+
+	t.Run("正常系: コメントが空白文字のみの場合は空文字に正規化されること", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			comment string
+		}{
+			{name: "半角スペースのみ", comment: "   "},
+			{name: "全角スペースのみ", comment: "　　"},
+			{name: "改行とタブ混在", comment: "\r\n \t \n \r"},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := CreateTaskRequest{
+					Title:    "タイトル",
+					Comment:  tc.comment,
+					Priority: "medium",
+				}
+				err := req.Validate()
+				require.NoError(t, err)
+				assert.Equal(t, "", req.Comment)
+			})
+		}
+	})
+
+	t.Run("正常系: is_recurring=true の場合は due_datetime が不正な値でも無視されてバリデーションを通過すること", func(t *testing.T) {
+		req := CreateTaskRequest{
+			Title:       "繰り返しタスク",
+			Priority:    "medium",
+			DueDatetime: strPtr("invalid-datetime-format"),
+			IsRecurring: boolPtr(true),
+			RecurringRule: &RecurringRule{
+				StartDate:  "2026-08-22",
+				EndDate:    "2026-10-31",
+				DaysOfWeek: []string{"saturday"},
+				DueTime:    "18:00",
+			},
+		}
+		err := req.Validate()
+		assert.NoError(t, err)
+	})
 }

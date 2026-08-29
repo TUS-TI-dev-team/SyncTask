@@ -382,4 +382,66 @@ func TestTaskService_CreateTask(t *testing.T) {
 		assert.Equal(t, "課題レポート提出", res.Tasks[0].Title)
 		assert.Equal(t, "第1行\n第2行", res.Tasks[0].Comment)
 	})
+
+	t.Run("正常系: コメントが空白文字のみの場合に空文字として永続化・返却されること", func(t *testing.T) {
+		repo := &mockTaskRepository{
+			createTaskFunc: func(ctx context.Context, task *model.Task) error {
+				assert.Equal(t, "課題レポート提出", task.Title)
+				assert.Equal(t, "", task.Comment)
+				return nil
+			},
+		}
+		svc := NewTaskService(repo)
+
+		req := &model.CreateTaskRequest{
+			Title:    "課題レポート提出",
+			Comment:  "  \r\n \t \n  ",
+			Priority: "medium",
+		}
+
+		res, err := svc.CreateTask(context.Background(), userID, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Len(t, res.Tasks, 1)
+		assert.Equal(t, "", res.Tasks[0].Comment)
+	})
+
+	t.Run("正常系: 繰り返し作成時にもすべての生成タスクでタイトル・コメントが正規化されること", func(t *testing.T) {
+		repo := &mockTaskRepository{
+			createTasksFunc: func(ctx context.Context, tasks []*model.Task) error {
+				require.Len(t, tasks, 2)
+				for _, task := range tasks {
+					assert.Equal(t, "週次ゼミ発表準備", task.Title)
+					assert.Equal(t, "第1行\n第2行", task.Comment)
+				}
+				return nil
+			},
+		}
+		svc := NewTaskService(repo)
+
+		req := &model.CreateTaskRequest{
+			Title:       "  週次ゼミ発表準備  ",
+			Comment:     "\r\n第1行\r\n第2行\r\n",
+			Priority:    "medium",
+			IsRecurring: boolPtr(true),
+			RecurringRule: &model.RecurringRule{
+				StartDate:  "2026-08-22",
+				EndDate:    "2026-08-29",
+				DaysOfWeek: []string{"saturday"},
+				DueTime:    "18:00",
+			},
+		}
+
+		res, err := svc.CreateTask(context.Background(), userID, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, 2, res.CreatedCount)
+		require.Len(t, res.Tasks, 2)
+		for _, task := range res.Tasks {
+			assert.Equal(t, "週次ゼミ発表準備", task.Title)
+			assert.Equal(t, "第1行\n第2行", task.Comment)
+		}
+	})
 }
