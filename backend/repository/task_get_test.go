@@ -75,6 +75,67 @@ func TestTaskRepository_GetTaskByID(t *testing.T) {
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("正常系: 締切日時が未設定（NULL）かつコメントが空文字のタスクが正常に取得できること", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer db.Close()
+
+		repo := NewTaskRepository(db)
+		ctx := context.Background()
+
+		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+		userID := "550e8400-e29b-41d4-a716-446655440000"
+		now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+
+		columns := []string{
+			"TASK_ID",
+			"USER_ID",
+			"TITLE",
+			"PRIORITY",
+			"DUE_DATETIME",
+			"STATUS",
+			"IS_PINNED",
+			"COMMENT",
+			"SEARCH_TEXT",
+			"CREATED_AT",
+			"UPDATED_AT",
+		}
+
+		rows := sqlmock.NewRows(columns).AddRow(
+			taskID,
+			userID,
+			"買い物リスト作成",
+			"medium",
+			nil, // DUE_DATETIME is NULL
+			"not_started",
+			false,
+			"", // COMMENT is empty string
+			"買い物リスト作成",
+			now,
+			now,
+		)
+
+		mock.ExpectQuery("SELECT TASK_ID, USER_ID, TITLE, PRIORITY, DUE_DATETIME, STATUS, IS_PINNED, COMMENT, SEARCH_TEXT, CREATED_AT, UPDATED_AT FROM TASK WHERE TASK_ID = \\$1 AND USER_ID = \\$2").
+			WithArgs(taskID, userID).
+			WillReturnRows(rows)
+
+		task, err := repo.GetTaskByID(ctx, userID, taskID)
+		require.NoError(t, err)
+		require.NotNil(t, task)
+		assert.Equal(t, taskID, task.ID)
+		assert.Equal(t, userID, task.UserID)
+		assert.Equal(t, "買い物リスト作成", task.Title)
+		assert.Equal(t, "", task.Comment)
+		assert.Equal(t, "medium", task.Priority)
+		assert.Equal(t, "not_started", task.Status)
+		assert.Nil(t, task.DueDatetime)
+		assert.False(t, task.IsPinned)
+		assert.Equal(t, "買い物リスト作成", task.SearchText)
+		assert.Equal(t, now, task.CreatedAt)
+		assert.Equal(t, now, task.UpdatedAt)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("準正常系: 該当レコードが存在しない場合（sql.ErrNoRows）に nil が返却されること", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
