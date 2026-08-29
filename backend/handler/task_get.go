@@ -32,6 +32,17 @@ func GetTaskHandler(service service.TaskService) gin.HandlerFunc {
 			return
 		}
 
-		// Step 2 で実装
+		taskID := c.Param("task_id")
+		res, err := service.GetTask(c.Request.Context(), userID, taskID)
+		if err != nil {
+			if appErr, ok := err.(*model.AppError); ok {
+				c.JSON(appErr.StatusCode, model.NewErrorResponse(appErr.Code, appErr.Message, appErr.Details))
+				return
+			}
+			c.JSON(http.StatusInternalServerError, model.NewErrorResponse("INTERNAL_SERVER_ERROR", "サーバー内部でエラーが発生しました。", nil))
+			return
+		}
+
+		c.JSON(http.StatusOK, res)
 	}
 }
