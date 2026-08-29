@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,4 +207,18 @@ func expectAccessLog(mock sqlmock.Sqlmock, userID any, ip string, now time.Time)
 	mock.ExpectExec("INSERT INTO ACCESS_LOG").
 		WithArgs(sqlmock.AnyArg(), userID, ip, "POST auth/login", nil, now).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
+func TestUpsertIPFailureQuery_ResetClearsBlockedUntil(t *testing.T) {
+	t.Run("正常系: 5分超過による失敗回数リセット時に過去のBLOCKED_UNTILをNULLへ戻すこと", func(t *testing.T) {
+		resetCondition := "WHEN EXCLUDED.LAST_FAILED_AT - LOGIN_IP_RATE_LIMIT.LAST_FAILED_AT > INTERVAL '5 minutes' THEN NULL"
+		assert.Contains(t, upsertIPFailureQuery, resetCondition)
+
+		blockCondition := ") >= 30 THEN EXCLUDED.LAST_FAILED_AT + INTERVAL '15 minutes'"
+		assert.Contains(t, upsertIPFailureQuery, blockCondition)
+		assert.Less(t,
+			strings.Index(upsertIPFailureQuery, blockCondition),
+			strings.Index(upsertIPFailureQuery, resetCondition),
+		)
+	})
 }
