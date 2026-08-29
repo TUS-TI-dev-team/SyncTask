@@ -7,6 +7,7 @@ import (
 
 	"synctask/backend/model"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,6 +81,8 @@ func TestTaskService_CreateTask(t *testing.T) {
 
 		task := res.Tasks[0]
 		assert.NotEmpty(t, task.ID)
+		_, parseErr := uuid.Parse(task.ID)
+		assert.NoError(t, parseErr)
 		assert.Equal(t, userID, task.UserID)
 		assert.Equal(t, "課題レポート提出", task.Title)
 		assert.Equal(t, "第5章の要約を含むこと", task.Comment)
@@ -136,6 +139,8 @@ func TestTaskService_CreateTask(t *testing.T) {
 
 		for i, task := range res.Tasks {
 			assert.NotEmpty(t, task.ID)
+			_, parseErr := uuid.Parse(task.ID)
+			assert.NoError(t, parseErr)
 			assert.Equal(t, userID, task.UserID)
 			assert.Equal(t, "週次ゼミ発表準備", task.Title)
 			assert.Equal(t, "進捗スライド作成", task.Comment)

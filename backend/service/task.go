@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"synctask/backend/model"
 	"synctask/backend/repository"
 	"synctask/backend/util"
@@ -26,15 +26,6 @@ type taskService struct {
 // NewTaskService は TaskService の新しいインスタンスを生成します。
 func NewTaskService(repo repository.TaskRepository) TaskService {
 	return &taskService{repo: repo}
-}
-
-// generateUUID は RFC 4122 v4 形式の UUID 文字列を生成します。
-func generateUUID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 var weekdayMap = map[time.Weekday]string{
@@ -100,7 +91,7 @@ func (s *taskService) CreateTask(ctx context.Context, userID string, req *model.
 			if targetDays[dayName] {
 				dueDt := time.Date(cur.Year(), cur.Month(), cur.Day(), dueHour, dueMin, 0, 0, jst)
 				task := &model.Task{
-					ID:          generateUUID(),
+					ID:          uuid.NewString(),
 					UserID:      userID,
 					Title:       req.Title,
 					Comment:     req.Comment,
@@ -173,7 +164,7 @@ func (s *taskService) CreateTask(ctx context.Context, userID string, req *model.
 	}
 
 	task := &model.Task{
-		ID:          generateUUID(),
+		ID:          uuid.NewString(),
 		UserID:      userID,
 		Title:       req.Title,
 		Comment:     req.Comment,
