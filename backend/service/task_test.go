@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -443,5 +444,56 @@ func TestTaskService_CreateTask(t *testing.T) {
 			assert.Equal(t, "週次ゼミ発表準備", task.Title)
 			assert.Equal(t, "第1行\n第2行", task.Comment)
 		}
+	})
+
+	t.Run("異常系: 単一タスク作成時にリポジトリがエラーを返却した場合、Serviceがそのエラーを伝播すること", func(t *testing.T) {
+		dbErr := errors.New("db connection failed")
+		repo := &mockTaskRepository{
+			createTaskFunc: func(ctx context.Context, task *model.Task) error {
+				return dbErr
+			},
+		}
+		svc := NewTaskService(repo)
+
+		req := &model.CreateTaskRequest{
+			Title:    "課題レポート提出",
+			Priority: "high",
+		}
+
+		res, err := svc.CreateTask(context.Background(), userID, req)
+
+		require.Error(t, err)
+		assert.Equal(t, dbErr, err)
+		assert.Nil(t, res)
+		assert.Equal(t, 1, repo.createTaskCalls)
+	})
+
+	t.Run("異常系: 繰り返しタスク作成時にリポジトリがエラーを返却した場合、Serviceがそのエラーを伝播すること", func(t *testing.T) {
+		dbErr := errors.New("db batch insert failed")
+		repo := &mockTaskRepository{
+			createTasksFunc: func(ctx context.Context, tasks []*model.Task) error {
+				return dbErr
+			},
+		}
+		svc := NewTaskService(repo)
+
+		req := &model.CreateTaskRequest{
+			Title:       "週次ゼミ発表準備",
+			Priority:    "medium",
+			IsRecurring: boolPtr(true),
+			RecurringRule: &model.RecurringRule{
+				StartDate:  "2026-08-22",
+				EndDate:    "2026-08-29",
+				DaysOfWeek: []string{"saturday"},
+				DueTime:    "18:00",
+			},
+		}
+
+		res, err := svc.CreateTask(context.Background(), userID, req)
+
+		require.Error(t, err)
+		assert.Equal(t, dbErr, err)
+		assert.Nil(t, res)
+		assert.Equal(t, 1, repo.createTasksCalls)
 	})
 }

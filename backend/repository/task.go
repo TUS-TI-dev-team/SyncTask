@@ -63,6 +63,7 @@ func (r *taskRepository) CreateTasks(ctx context.Context, tasks []*model.Task) e
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	for _, task := range tasks {
 		_, err := tx.ExecContext(
@@ -81,7 +82,6 @@ func (r *taskRepository) CreateTasks(ctx context.Context, tasks []*model.Task) e
 			task.UpdatedAt,
 		)
 		if err != nil {
-			_ = tx.Rollback()
 			return err
 		}
 	}
