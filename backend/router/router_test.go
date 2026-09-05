@@ -104,6 +104,25 @@ func TestSetupRouter_LoginRoute(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
+// @spec POST /api/auth/register/request-otp にルーティングされ、不正JSON時に400が返却されること
+func TestSetupRouter_RegisterRequestOtpRoute(t *testing.T) {
+	previousMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(previousMode) })
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	r := SetupRouter(db)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register/request-otp", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestSetupRouter_Tasks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
