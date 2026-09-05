@@ -59,4 +59,18 @@ func TestErrorResponse_JSONSerialization(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(bytes), `"details":[]`)
 	})
+
+	t.Run("正常系: NewNotFoundError で 404 ステータスと NOT_FOUND コードを持つ AppError が生成されること", func(t *testing.T) {
+		appErr := NewNotFoundError("指定されたタスクが見つかりません。")
+		assert.Equal(t, 404, appErr.StatusCode)
+		assert.Equal(t, "NOT_FOUND", appErr.Code)
+		assert.Equal(t, "指定されたタスクが見つかりません。", appErr.Message)
+		assert.NotNil(t, appErr.Details)
+		assert.Empty(t, appErr.Details)
+
+		resp := NewErrorResponse(appErr.Code, appErr.Message, appErr.Details)
+		bytes, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.Contains(t, string(bytes), `"details":[]`)
+	})
 }

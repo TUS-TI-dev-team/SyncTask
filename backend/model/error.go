@@ -12,7 +12,7 @@ type ErrorDetail struct {
 
 // ErrorBody はエラーレスポンスの本体を表します。
 type ErrorBody struct {
-	// Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "INTERNAL_SERVER_ERROR"）
+	// Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "NOT_FOUND", "INTERNAL_SERVER_ERROR"）
 	Code string `json:"code" example:"BAD_REQUEST"`
 	// Message はエラーメッセージです
 	Message string `json:"message" example:"入力内容に不備があります。"`
@@ -56,6 +56,16 @@ func NewUnauthorizedError(message string) *AppError {
 	return &AppError{
 		StatusCode: 401,
 		Code:       "UNAUTHORIZED",
+		Message:    message,
+		Details:    []ErrorDetail{},
+	}
+}
+
+// NewNotFoundError は 404 Not Found 用の AppError を生成します。
+func NewNotFoundError(message string) *AppError {
+	return &AppError{
+		StatusCode: 404,
+		Code:       "NOT_FOUND",
 		Message:    message,
 		Details:    []ErrorDetail{},
 	}

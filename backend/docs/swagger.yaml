@@ -65,7 +65,8 @@ definitions:
   model.ErrorBody:
     properties:
       code:
-        description: 'Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "INTERNAL_SERVER_ERROR"）'
+        description: 'Code はエラーコードです（例: "BAD_REQUEST", "UNAUTHORIZED", "NOT_FOUND",
+          "INTERNAL_SERVER_ERROR"）'
         example: BAD_REQUEST
         type: string
       details:
@@ -95,6 +96,13 @@ definitions:
         allOf:
         - $ref: '#/definitions/model.ErrorBody'
         description: Error はエラーの詳細情報です
+    type: object
+  model.GetTaskResponse:
+    properties:
+      task:
+        allOf:
+        - $ref: '#/definitions/model.Task'
+        description: Task は詳細取得されたタスクオブジェクトです
     type: object
   model.RecurringRule:
     properties:
@@ -209,6 +217,39 @@ paths:
           schema:
             $ref: '#/definitions/model.ErrorResponse'
       summary: 新規タスク作成
+      tags:
+      - Tasks
+  /api/tasks/{task_id}:
+    get:
+      consumes:
+      - application/json
+      description: 指定されたタスクIDの詳細情報を取得します。
+      parameters:
+      - description: タスクID（UUID）
+        in: path
+        name: task_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: タスク詳細取得成功
+          schema:
+            $ref: '#/definitions/model.GetTaskResponse'
+        "401":
+          description: 認証エラー（未ログイン）
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: タスクが存在しない、または他ユーザー所有
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: サーバー内部エラー
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: タスク詳細取得
       tags:
       - Tasks
   /health-check:

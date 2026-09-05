@@ -17,8 +17,10 @@ import (
 type mockTaskRepository struct {
 	createTaskFunc   func(ctx context.Context, task *model.Task) error
 	createTasksFunc  func(ctx context.Context, tasks []*model.Task) error
+	getTaskByIDFunc  func(ctx context.Context, userID, taskID string) (*model.Task, error)
 	createTaskCalls  int
 	createTasksCalls int
+	getTaskByIDCalls int
 }
 
 func (m *mockTaskRepository) CreateTask(ctx context.Context, task *model.Task) error {
@@ -35,6 +37,14 @@ func (m *mockTaskRepository) CreateTasks(ctx context.Context, tasks []*model.Tas
 		return m.createTasksFunc(ctx, tasks)
 	}
 	return nil
+}
+
+func (m *mockTaskRepository) GetTaskByID(ctx context.Context, userID, taskID string) (*model.Task, error) {
+	m.getTaskByIDCalls++
+	if m.getTaskByIDFunc != nil {
+		return m.getTaskByIDFunc(ctx, userID, taskID)
+	}
+	return nil, nil
 }
 
 func boolPtr(b bool) *bool {
