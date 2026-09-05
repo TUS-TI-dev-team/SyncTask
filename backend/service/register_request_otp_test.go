@@ -232,6 +232,7 @@ func TestRegisterRequestOtpService_RequestOtp(t *testing.T) {
 		assert.False(t, savedSession.PendingEmail.Valid)
 		assert.False(t, savedSession.PendingPasswordHash.Valid)
 		assert.False(t, savedSession.OtpHash.Valid)
+		assert.Equal(t, "sent", savedSession.DeliveryStatus)
 
 		require.NotNil(t, savedMailLog)
 		assert.True(t, savedMailLog.IsDummy)
@@ -276,6 +277,7 @@ func TestRegisterRequestOtpService_RequestOtp(t *testing.T) {
 		assert.False(t, mailerCalled)
 		require.NotNil(t, savedSession)
 		assert.True(t, savedSession.IsDummy)
+		assert.Equal(t, "sent", savedSession.DeliveryStatus)
 	})
 
 	t.Run("異常系: 入力バリデーションエラーの場合は遅延なしでエラーを返しメール送信しないこと", func(t *testing.T) {

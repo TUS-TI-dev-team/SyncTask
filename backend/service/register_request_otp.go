@@ -149,6 +149,11 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 		}
 	}
 
+	deliveryStatus := "pending"
+	if isDummy {
+		deliveryStatus = "sent"
+	}
+
 	session := &model.OtpSessionRecord{
 		OtpSessionID:     sessionID,
 		Purpose:          "SIGNUP",
@@ -159,7 +164,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 		AttemptCount:     0,
 		SendCount:        0,
 		SendFailedCount:  0,
-		DeliveryStatus:   "pending",
+		DeliveryStatus:   deliveryStatus,
 		LastSentAt:       now,
 		OtpExpiresAt:     now.Add(5 * time.Minute),
 		SessionExpiresAt: now.Add(15 * time.Minute),
