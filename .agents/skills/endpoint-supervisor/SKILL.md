@@ -73,7 +73,7 @@ flowchart TD
 
 ```bash
 # 1. Step N 専用 Tab の作成
-TAB_RES=$(herdr tab create --cwd "$PWD" --label "step-${STEP_NUM}-worker" --no-focus)
+TAB_RES=$(herdr tab create --workspace "${HERDR_WORKSPACE_ID:-}" --cwd "$PWD" --label "step-${STEP_NUM}-worker" --no-focus)
 TAB_ID=$(printf '%s\n' "$TAB_RES" | jq -r '.result.tab.tab_id')
 PANE_ID=$(printf '%s\n' "$TAB_RES" | jq -r '.result.root_pane.pane_id')
 
@@ -112,7 +112,7 @@ herdr tab close "$TAB_ID"
 #### Windows (PowerShell) の場合の実行例:
 ```powershell
 # 1. Step N 専用 Tab の作成
-$TabRes = (herdr tab create --cwd $PWD --label "step-$StepNum-worker" --no-focus) -join "`n" | ConvertFrom-Json
+$TabRes = (herdr tab create --workspace $env:HERDR_WORKSPACE_ID --cwd $PWD --label "step-$StepNum-worker" --no-focus) -join "`n" | ConvertFrom-Json
 $TabId = $TabRes.result.tab.tab_id
 $PaneId = $TabRes.result.root_pane.pane_id
 
@@ -212,3 +212,7 @@ herdr agent prompt "$HERDR_PANE_ID" "$PROMPT" --wait
 - **Status**: 全単体テストパス、Majorレビュー指摘 0件
 - **次のアクション**: 最上位司令塔による人間の最終承認・PRマージ
 ```
+
+## 補足情報
+
+- herdrの使用方法については、 `$ herdr --skill` コマンドの実行結果、および https://herdr.dev/docs/agent-automation/ の内容を参考にしてください。

@@ -45,7 +45,7 @@ function Create-Worktree {
     $SupervisorName = "sup-issue-$Issue"
     Write-Host "[orchestrate] Starting Endpoint Supervisor agent ($SupervisorName)..." -ForegroundColor Cyan
     herdr agent start $SupervisorName --kind agy --pane $RootPaneId
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 6
 
     Write-Host "[orchestrate] Initializing supervisor with prompt..." -ForegroundColor Cyan
     $Prompt = "/endpoint-supervisor Issue #$Issue`: $Endpoint"

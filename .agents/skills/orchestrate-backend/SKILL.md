@@ -161,3 +161,7 @@ WS_ID=$(herdr workspace list | grep "ep-issue-${ISSUE_NUM}" | awk '{print $1}')
 ### Step 5: ループ継続判定
 
 `gh issue list --state open` を再確認し、オープンなバックエンド Issue が残っていれば Step 1 に戻って次の Issue をプールに投入します。残りが 0 件になれば全体の完了報告を出力して終了します。
+
+## 補足情報
+
+- herdrの使用方法については、 `$ herdr --skill` コマンドの実行結果、および https://herdr.dev/docs/agent-automation/ の内容を参考にしてください。
