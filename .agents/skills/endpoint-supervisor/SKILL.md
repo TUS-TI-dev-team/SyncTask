@@ -109,6 +109,46 @@ done
 herdr tab close "$TAB_ID"
 ```
 
+#### Windows (PowerShell) の場合の実行例:
+```powershell
+# 1. Step N 専用 Tab の作成
+$TabRes = (herdr tab create --cwd $PWD --label "step-$StepNum-worker" --no-focus) -join "`n" | ConvertFrom-Json
+$TabId = $TabRes.result.tab.tab_id
+$PaneId = $TabRes.result.root_pane.pane_id
+
+# 2. ワーカー起動
+$WorkerName = "step-$StepNum-worker"
+herdr agent start $WorkerName --kind agy --pane $PaneId
+Start-Sleep -Seconds 2
+
+# 3. プロンプト投入
+$Prompt = "/grill-me docs/plans/backend/$EndpointName.md の Step. $StepNum を実行してください。
+- backend/TESTING_GUIDE.md の命名規則・Code-as-Docs 原則を厳守すること。
+- 検証は backend/ ディレクトリで 'go test -v ./...' を実行すること。
+- 疑問点や設計確認があれば、このタブでユーザーに質問して停止すること。
+完了したらテスト結果と変更サマリを報告してください。"
+
+herdr agent prompt $WorkerName $Prompt
+
+# 4. 監視ループ
+while ($true) {
+    herdr agent wait $WorkerName --timeout 300000 | Out-Null
+    $AgentInfo = (herdr agent get $WorkerName) -join "`n" | ConvertFrom-Json
+    $Status = $AgentInfo.result.agent.agent_status
+    if ($Status -eq "blocked") {
+        Write-Host "⚠️ ワーカー ($WorkerName / Tab: $TabId) が質問・確認でブロックされています。"
+        Write-Host "ユーザーの皆様へ: Herdr でタブ [$TabId] に切り替えて回答を入力してください。"
+        Start-Sleep -Seconds 10
+    } elseif ($Status -eq "idle" -or $Status -eq "done") {
+        Write-Host "✅ ワーカー ($WorkerName) が完了しました。"
+        break
+    }
+}
+
+# 5. ワーカー Tab の破棄
+herdr tab close $TabId
+```
+
 ---
 
 ### Phase 3: コミット & Pull Request の作成

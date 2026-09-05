@@ -3,7 +3,7 @@
 # ==============================================================================
 param (
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet("create-worktree", "cleanup-worktree", "list-worktrees")]
+    [ValidateSet("create-worktree", "cleanup-worktree", "list-worktrees", "get-supervisor-status")]
     [string]$Command,
 
     [Parameter(Position = 1)]
@@ -34,16 +34,18 @@ function Create-Worktree {
 
     Write-Host "[orchestrate] Creating Herdr workspace..." -ForegroundColor Cyan
     $CreateRes = herdr workspace create --cwd $WorktreePath --label "ep-issue-$Issue" --no-focus
-    $JsonObj = $CreateRes | ConvertFrom-Json
+    $JsonObj = ($CreateRes -join "`n") | ConvertFrom-Json
 
     $WsId = $JsonObj.result.workspace.workspace_id
     $RootPaneId = $JsonObj.result.root_pane.pane_id
 
     Write-Host "[orchestrate] Workspace created: ID=$WsId, RootPane=$RootPaneId" -ForegroundColor Green
+    Start-Sleep -Seconds 2
 
     $SupervisorName = "sup-issue-$Issue"
     Write-Host "[orchestrate] Starting Endpoint Supervisor agent ($SupervisorName)..." -ForegroundColor Cyan
     herdr agent start $SupervisorName --kind agy --pane $RootPaneId
+    Start-Sleep -Seconds 3
 
     Write-Host "[orchestrate] Initializing supervisor with prompt..." -ForegroundColor Cyan
     $Prompt = "/endpoint-supervisor Issue #$Issue`: $Endpoint"
@@ -83,6 +85,16 @@ function List-Worktrees {
     herdr workspace list
 }
 
+function Get-Supervisor-Status {
+    param (
+        [string]$Supervisor
+    )
+    $res = herdr agent get $Supervisor
+    if ($res) {
+        ($res -join "`n") | ConvertFrom-Json
+    }
+}
+
 switch ($Command) {
     "create-worktree" {
         if (-not $IssueNum -or -not $Param2) {
@@ -100,5 +112,12 @@ switch ($Command) {
     }
     "list-worktrees" {
         List-Worktrees
+    }
+    "get-supervisor-status" {
+        if (-not $IssueNum) {
+            Write-Error "Usage: .\scripts\orchestrate-helpers.ps1 get-supervisor-status <supervisor_name>"
+            exit 1
+        }
+        Get-Supervisor-Status -Supervisor $IssueNum
     }
 }
