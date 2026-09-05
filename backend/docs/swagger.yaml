@@ -104,6 +104,33 @@ definitions:
         - $ref: '#/definitions/model.Task'
         description: Task は詳細取得されたタスクオブジェクトです
     type: object
+  model.LoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: Password123!
+        type: string
+    type: object
+  model.LoginResponse:
+    properties:
+      user:
+        $ref: '#/definitions/model.LoginUser'
+    type: object
+  model.LoginUser:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
   model.RecurringRule:
     properties:
       days_of_week:
@@ -185,6 +212,44 @@ info:
   title: SyncTask API
   version: "1.0"
 paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: メールアドレスとパスワードを照合し、ログインセッションとCSRF Cookieを発行します。
+      parameters:
+      - description: ログインリクエスト
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: ログイン
+      tags:
+      - Auth
   /api/tasks:
     post:
       consumes:

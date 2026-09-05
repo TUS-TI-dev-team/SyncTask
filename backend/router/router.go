@@ -18,8 +18,24 @@ import (
 //
 // 開発モード（gin.Mode() != gin.ReleaseMode）の場合にのみ、
 // /health-check エンドポイントおよび /swagger/*any (Swagger UI) が有効化されます。
-func SetupRouter(db *sql.DB) *gin.Engine {
+type Options struct {
+	CookieSecure   bool
+	TrustedProxies []string
+}
+
+func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	r := gin.Default()
+	options := Options{}
+	if len(configured) > 0 {
+		options = configured[0]
+	}
+	trustedProxies := options.TrustedProxies
+	if len(trustedProxies) == 0 {
+		trustedProxies = []string{}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		panic("invalid trusted proxy configuration: " + err.Error())
+	}
 
 	// ルートエンドポイント
 	r.GET("/", func(c *gin.Context) {
@@ -41,6 +57,8 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 	taskRepo := repository.NewTaskRepository(db)
 	taskService := service.NewTaskService(taskRepo)
 
+	loginRepo := repository.NewLoginRepository(db)
+	loginService := service.NewLoginService(loginRepo, service.LoginDependencies{})
 	// API ルーティング
 	api := r.Group("/api")
 	{
@@ -48,5 +66,6 @@ func SetupRouter(db *sql.DB) *gin.Engine {
 		api.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
 	}
 
+	api.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))
 	return r
 }

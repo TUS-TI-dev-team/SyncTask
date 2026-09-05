@@ -26,7 +26,10 @@ func main() {
 	}
 	defer database.Close()
 
-	r := router.SetupRouter(database)
+	r := router.SetupRouter(database, router.Options{
+		CookieSecure:   cfg.CookieSecure,
+		TrustedProxies: cfg.TrustedProxies,
+	})
 
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("サーバーの起動に失敗しました: %v", err)

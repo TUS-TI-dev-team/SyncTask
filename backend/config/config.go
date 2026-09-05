@@ -3,13 +3,17 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 // Config はアプリケーション全体の設定を保持する構造体です。
 type Config struct {
-	GinMode     string
-	FrontendURL string
-	DB          DBConfig
+	GinMode        string
+	FrontendURL    string
+	CookieSecure   bool
+	TrustedProxies []string
+	DB             DBConfig
 }
 
 // DBConfig はデータベース接続設定を保持する構造体です。
@@ -29,11 +33,33 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+func getBoolEnvOrDefault(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func getCSVEnv(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
+}
+
 // Load は環境変数から設定を読み込み Config 構造体を返します。
 func Load() *Config {
 	return &Config{
-		GinMode:     getEnvOrDefault("GIN_MODE", "debug"),
-		FrontendURL: getEnvOrDefault("FRONTEND_URL", "http://localhost:3000"),
+		GinMode:        getEnvOrDefault("GIN_MODE", "debug"),
+		FrontendURL:    getEnvOrDefault("FRONTEND_URL", "http://localhost:3000"),
+		CookieSecure:   getBoolEnvOrDefault("COOKIE_SECURE", false),
+		TrustedProxies: getCSVEnv("TRUSTED_PROXIES"),
 		DB: DBConfig{
 			Host:     getEnvOrDefault("DB_HOST", "localhost"),
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
