@@ -138,3 +138,70 @@ func TestSetupRouter_GetTask(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
+
+func TestSetupRouter_TrustedProxies_DirectAccess(t *testing.T) {
+	previousMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(previousMode) })
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	// TrustedProxies が空（直接アクセス時・デフォルト設定）
+	r := SetupRouter(db)
+	r.GET("/test-client-ip", func(c *gin.Context) {
+		c.String(http.StatusOK, c.ClientIP())
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test-client-ip", nil)
+	req.RemoteAddr = "192.0.2.1:12345"
+	req.Header.Set("X-Forwarded-For", "203.0.113.195")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// プロキシが信頼されていないため、X-Forwarded-For は無視され RemoteAddr の IP が採用される
+	assert.Equal(t, "192.0.2.1", w.Body.String())
+}
+
+func TestSetupRouter_TrustedProxies_WithTrustedProxy(t *testing.T) {
+	previousMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(previousMode) })
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	// 192.0.2.1 を信頼済みプロキシとして設定
+	r := SetupRouter(db, Options{
+		TrustedProxies: []string{"192.0.2.1"},
+	})
+	r.GET("/test-client-ip", func(c *gin.Context) {
+		c.String(http.StatusOK, c.ClientIP())
+	})
+
+	// 信頼済みプロキシからのリクエスト
+	req := httptest.NewRequest(http.MethodGet, "/test-client-ip", nil)
+	req.RemoteAddr = "192.0.2.1:12345"
+	req.Header.Set("X-Forwarded-For", "203.0.113.195")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// 信頼済みプロキシ経由のため、X-Forwarded-For の IP が採用される
+	assert.Equal(t, "203.0.113.195", w.Body.String())
+
+	// 未信頼のプロキシ（198.51.100.1）からのリクエスト
+	reqUntrusted := httptest.NewRequest(http.MethodGet, "/test-client-ip", nil)
+	reqUntrusted.RemoteAddr = "198.51.100.1:12345"
+	reqUntrusted.Header.Set("X-Forwarded-For", "203.0.113.195")
+	wUntrusted := httptest.NewRecorder()
+	r.ServeHTTP(wUntrusted, reqUntrusted)
+
+	assert.Equal(t, http.StatusOK, wUntrusted.Code)
+	// 未信頼プロキシからのリクエストなので X-Forwarded-For は無視され RemoteAddr が採用される
+	assert.Equal(t, "198.51.100.1", wUntrusted.Body.String())
+}
+

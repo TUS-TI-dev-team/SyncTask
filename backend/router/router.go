@@ -29,7 +29,11 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	if len(configured) > 0 {
 		options = configured[0]
 	}
-	if err := r.SetTrustedProxies(options.TrustedProxies); err != nil {
+	trustedProxies := options.TrustedProxies
+	if len(trustedProxies) == 0 {
+		trustedProxies = []string{}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
 		panic("invalid trusted proxy configuration: " + err.Error())
 	}
 
