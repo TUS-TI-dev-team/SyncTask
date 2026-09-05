@@ -69,6 +69,7 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	{
 		api.POST("/tasks", handler.CreateTaskHandler(taskService))
 		api.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
+		api.PATCH("/tasks/:task_id", handler.PatchTaskHandler(taskService))
 	}
 
 	api.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))

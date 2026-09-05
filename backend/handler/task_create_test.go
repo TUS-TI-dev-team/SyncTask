@@ -20,6 +20,7 @@ import (
 type mockTaskService struct {
 	createTaskFunc func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error)
 	getTaskFunc    func(ctx context.Context, userID, taskID string) (*model.GetTaskResponse, error)
+	patchTaskFunc  func(ctx context.Context, userID, taskID string, req *model.PatchTaskRequest) (*model.PatchTaskResponse, error)
 }
 
 func (m *mockTaskService) CreateTask(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
@@ -32,6 +33,13 @@ func (m *mockTaskService) CreateTask(ctx context.Context, userID string, req *mo
 func (m *mockTaskService) GetTask(ctx context.Context, userID, taskID string) (*model.GetTaskResponse, error) {
 	if m.getTaskFunc != nil {
 		return m.getTaskFunc(ctx, userID, taskID)
+	}
+	return nil, nil
+}
+
+func (m *mockTaskService) PatchTask(ctx context.Context, userID, taskID string, req *model.PatchTaskRequest) (*model.PatchTaskResponse, error) {
+	if m.patchTaskFunc != nil {
+		return m.patchTaskFunc(ctx, userID, taskID, req)
 	}
 	return nil, nil
 }

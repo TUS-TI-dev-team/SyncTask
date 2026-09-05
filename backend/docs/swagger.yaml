@@ -131,6 +131,28 @@ definitions:
       username:
         type: string
     type: object
+  model.PatchTaskRequest:
+    properties:
+      comment:
+        type: string
+      dueDatetime:
+        type: string
+      isPinned:
+        type: boolean
+      priority:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  model.PatchTaskResponse:
+    properties:
+      task:
+        allOf:
+        - $ref: '#/definitions/model.Task'
+        description: Task は更新後のタスクオブジェクトです
+    type: object
   model.RecurringRule:
     properties:
       days_of_week:
@@ -315,6 +337,48 @@ paths:
           schema:
             $ref: '#/definitions/model.ErrorResponse'
       summary: タスク詳細取得
+      tags:
+      - Tasks
+    patch:
+      consumes:
+      - application/json
+      description: 指定されたタスクIDの情報を部分更新します。リクエストボディに含まれるフィールドのみが更新されます。
+      parameters:
+      - description: タスクID（UUID）
+        in: path
+        name: task_id
+        required: true
+        type: string
+      - description: タスク部分更新リクエスト
+        in: body
+        name: task
+        required: true
+        schema:
+          $ref: '#/definitions/model.PatchTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: タスク部分更新成功
+          schema:
+            $ref: '#/definitions/model.PatchTaskResponse'
+        "400":
+          description: バリデーションエラー・JSON形式不正
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "401":
+          description: 認証エラー（未ログイン）
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "404":
+          description: タスクが存在しない、または他ユーザー所有
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: サーバー内部エラー
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: タスク部分更新
       tags:
       - Tasks
   /health-check:
