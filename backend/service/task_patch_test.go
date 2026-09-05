@@ -182,7 +182,12 @@ func TestTaskService_PatchTask(t *testing.T) {
 		err := json.Unmarshal([]byte(`{"title": null}`), &req)
 		require.NoError(t, err)
 
-		repo := &mockTaskRepository{}
+		taskCopy := *baseTask
+		repo := &mockTaskRepository{
+			getTaskByIDFunc: func(ctx context.Context, uID, tID string) (*model.Task, error) {
+				return &taskCopy, nil
+			},
+		}
 		svc := NewTaskService(repo)
 
 		res, err := svc.PatchTask(context.Background(), userID, taskID, &req)
@@ -193,7 +198,7 @@ func TestTaskService_PatchTask(t *testing.T) {
 		require.True(t, errors.As(err, &appErr))
 		assert.Equal(t, 400, appErr.StatusCode)
 		assert.Equal(t, "BAD_REQUEST", appErr.Code)
-		assert.Equal(t, 0, repo.getTaskByIDCalls)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
 	})
 
 	t.Run("異常系: 対象タスクが存在しない（または他者所有）場合に 404 NOT_FOUND が返却されること", func(t *testing.T) {
@@ -217,6 +222,33 @@ func TestTaskService_PatchTask(t *testing.T) {
 		assert.Equal(t, 404, appErr.StatusCode)
 		assert.Equal(t, "NOT_FOUND", appErr.Code)
 		assert.Equal(t, "指定されたタスクが見つかりません。", appErr.Message)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
+		assert.Equal(t, 0, repo.updateTaskCalls)
+	})
+
+	t.Run("異常系: 対象タスクが存在しない場合、不正なリクエストボディであっても 400 ではなく先に 404 NOT_FOUND が返却されること", func(t *testing.T) {
+		var req model.PatchTaskRequest
+		// 不正なリクエスト（title に null）
+		err := json.Unmarshal([]byte(`{"title": null}`), &req)
+		require.NoError(t, err)
+
+		repo := &mockTaskRepository{
+			getTaskByIDFunc: func(ctx context.Context, uID, tID string) (*model.Task, error) {
+				return nil, nil // レコードなし
+			},
+		}
+		svc := NewTaskService(repo)
+
+		res, err := svc.PatchTask(context.Background(), userID, taskID, &req)
+		require.Error(t, err)
+		assert.Nil(t, res)
+
+		var appErr *model.AppError
+		require.True(t, errors.As(err, &appErr))
+		assert.Equal(t, 404, appErr.StatusCode)
+		assert.Equal(t, "NOT_FOUND", appErr.Code)
+		assert.Equal(t, "指定されたタスクが見つかりません。", appErr.Message)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
 		assert.Equal(t, 0, repo.updateTaskCalls)
 	})
 
@@ -237,5 +269,60 @@ func TestTaskService_PatchTask(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, res)
 		assert.Equal(t, dbErr, err)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
+	})
+
+	t.Run("異常系: UpdateTask 実行時にリポジトリがエラーを返却した場合にエラーが伝播すること", func(t *testing.T) {
+		var req model.PatchTaskRequest
+		err := json.Unmarshal([]byte(`{"title": "更新後タイトル"}`), &req)
+		require.NoError(t, err)
+
+		taskCopy := *baseTask
+		dbErr := errors.New("update failed")
+		repo := &mockTaskRepository{
+			getTaskByIDFunc: func(ctx context.Context, uID, tID string) (*model.Task, error) {
+				return &taskCopy, nil
+			},
+			updateTaskFunc: func(ctx context.Context, task *model.Task) (*model.Task, error) {
+				return nil, dbErr
+			},
+		}
+		svc := NewTaskService(repo)
+
+		res, err := svc.PatchTask(context.Background(), userID, taskID, &req)
+		require.Error(t, err)
+		assert.Nil(t, res)
+		assert.Equal(t, dbErr, err)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
+		assert.Equal(t, 1, repo.updateTaskCalls)
+	})
+
+	t.Run("異常系: UpdateTask の戻り値が nil の場合に 404 NOT_FOUND が返却されること", func(t *testing.T) {
+		var req model.PatchTaskRequest
+		err := json.Unmarshal([]byte(`{"title": "更新後タイトル"}`), &req)
+		require.NoError(t, err)
+
+		taskCopy := *baseTask
+		repo := &mockTaskRepository{
+			getTaskByIDFunc: func(ctx context.Context, uID, tID string) (*model.Task, error) {
+				return &taskCopy, nil
+			},
+			updateTaskFunc: func(ctx context.Context, task *model.Task) (*model.Task, error) {
+				return nil, nil // 並行削除等でレコードが存在しなくなった場合
+			},
+		}
+		svc := NewTaskService(repo)
+
+		res, err := svc.PatchTask(context.Background(), userID, taskID, &req)
+		require.Error(t, err)
+		assert.Nil(t, res)
+
+		var appErr *model.AppError
+		require.True(t, errors.As(err, &appErr))
+		assert.Equal(t, 404, appErr.StatusCode)
+		assert.Equal(t, "NOT_FOUND", appErr.Code)
+		assert.Equal(t, "指定されたタスクが見つかりません。", appErr.Message)
+		assert.Equal(t, 1, repo.getTaskByIDCalls)
+		assert.Equal(t, 1, repo.updateTaskCalls)
 	})
 }

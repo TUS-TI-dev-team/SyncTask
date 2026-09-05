@@ -11,24 +11,24 @@ import (
 // PatchTask は指定された taskID のタスク情報を部分更新します。
 //
 // @spec
-// - リクエストのバリデーションを実行（400 BAD_REQUEST）
 // - 既存タスクを取得し存在しない場合は 404 NOT_FOUND（IDOR/BOLA防止）
+// - リクエストのバリデーションを実行（400 BAD_REQUEST）
 // - 更新対象フィールドが1つも指定されていない場合は DB 更新をスキップし既存タスクを返却
 // - 指定されたフィールドのみを既存タスクに上書き
 // - title または comment 更新時は SearchText を再生成
 // - UpdatedAt を JST の現在時刻に更新
 // - リポジトリの UpdateTask を実行して更新結果を返却
 func (s *taskService) PatchTask(ctx context.Context, userID, taskID string, req *model.PatchTaskRequest) (*model.PatchTaskResponse, error) {
-	if err := req.Validate(); err != nil {
-		return nil, err
-	}
-
 	existing, err := s.repo.GetTaskByID(ctx, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 	if existing == nil {
 		return nil, model.NewNotFoundError("指定されたタスクが見つかりません。")
+	}
+
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
 
 	if !req.HasChanges() {

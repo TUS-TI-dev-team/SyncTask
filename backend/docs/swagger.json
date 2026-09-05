@@ -167,6 +167,69 @@
                         }
                     }
                 }
+            },
+            "patch": {
+                "description": "指定されたタスクIDの情報を部分更新します。リクエストボディに含まれるフィールドのみが更新されます。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tasks"
+                ],
+                "summary": "タスク部分更新",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "タスクID（UUID）",
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "タスク部分更新リクエスト",
+                        "name": "task",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.PatchTaskRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "タスク部分更新成功",
+                        "schema": {
+                            "$ref": "#/definitions/model.PatchTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "バリデーションエラー・JSON形式不正",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "認証エラー（未ログイン）",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "タスクが存在しない、または他ユーザー所有",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "サーバー内部エラー",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/health-check": {
@@ -380,6 +443,42 @@
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "model.PatchTaskRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "dueDatetime": {
+                    "type": "string"
+                },
+                "isPinned": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.PatchTaskResponse": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "description": "Task は更新後のタスクオブジェクトです",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.Task"
+                        }
+                    ]
                 }
             }
         },
