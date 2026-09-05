@@ -59,6 +59,11 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 
 	loginRepo := repository.NewLoginRepository(db)
 	loginService := service.NewLoginService(loginRepo, service.LoginDependencies{})
+
+	registerRepo := repository.NewRegisterRequestOtpRepository(db)
+	registerMailer := service.NewLogMailer()
+	registerService := service.NewRegisterRequestOtpService(registerRepo, registerMailer, service.RegisterRequestOtpDependencies{})
+
 	// API ルーティング
 	api := r.Group("/api")
 	{
@@ -67,5 +72,6 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	}
 
 	api.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))
+	api.POST("/auth/register/request-otp", handler.RegisterRequestOtpHandler(registerService))
 	return r
 }

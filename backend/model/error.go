@@ -84,6 +84,16 @@ func NewRateLimitError(message string, retryAfter int) *AppError {
 		RetryAfter: retryAfter,
 	}
 }
+
+// NewServiceUnavailableError は 503 Service Unavailable 用の AppError を生成します。
+func NewServiceUnavailableError(code, message string) *AppError {
+	return &AppError{
+		StatusCode: 503,
+		Code:       code,
+		Message:    message,
+		Details:    []ErrorDetail{},
+	}
+}
 func NewErrorResponse(code, message string, details []ErrorDetail) ErrorResponse {
 	if details == nil {
 		details = []ErrorDetail{}
