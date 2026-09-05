@@ -25,3 +25,21 @@ DB_NAME=synctask_e2e docker compose up --build
 ```bash
 npx skills experimental_install
 ```
+
+## AI バックエンド自動実装オーケストレーション
+
+Herdr および Antigravity CLI を用いた 3 階層マルチエージェントにより、未実装エンドポイントの Issue 取得から実装計画策定、TDD 実装、PR 作成、レビュー修正ループ、マージまでを完全自律実行できます。
+
+### 起動コマンド
+メイン Workspace (`w1`) で以下を実行します：
+
+```bash
+# Antigravity CLI のプロンプトで実行
+/orchestrate-backend
+```
+
+### 人間向け運用ガイド
+- **詳細設計書**: `docs/plans/be-dev-automation-by-gemini.md`
+- **対話ポイント**:
+  - 実装・レビュー中の質問：該当ワーカーの Herdr タブに直接回答
+  - PR マージ承認：最上位司令塔がモーダル（`ask_question`）で提示

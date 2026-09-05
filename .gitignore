@@ -6,9 +6,15 @@ node_modules/
 .env.local
 .env.*.local
 
+# Git Worktrees
+.worktrees/
+
 # Custom skills ignore rules
 .agents/skills/*
 !.agents/skills/apply-review-fixes/
 !.agents/skills/review-changes/
 !.agents/skills/review/
+!.agents/skills/herdr/
 !.agents/skills/herdr-review-loop/
+!.agents/skills/orchestrate-backend/
+!.agents/skills/endpoint-supervisor/
