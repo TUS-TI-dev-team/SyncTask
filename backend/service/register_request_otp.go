@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"math/big"
 	"time"
 
@@ -194,6 +195,60 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 	}
 
 	if err := s.repo.SaveSessionWithLogs(ctx, session, mailLog, accessLog); err != nil {
+		if !isDummy && errors.Is(err, repository.ErrConflict) {
+			// 競合処理: 一意制約抵触時はロールバックしてダミー処理へ切り替え、内部競合を秘匿する
+			dummySessionID, genErr := s.deps.GenerateSessionID()
+			if genErr != nil {
+				return nil, genErr
+			}
+			dummySession := &model.OtpSessionRecord{
+				OtpSessionID:     dummySessionID,
+				Purpose:          "SIGNUP",
+				UserID:           sql.NullString{},
+				MaskedEmail:      maskedEmail,
+				Status:           "active",
+				IsDummy:          true,
+				AttemptCount:     0,
+				SendCount:        0,
+				SendFailedCount:  0,
+				DeliveryStatus:   "sent",
+				LastSentAt:       now,
+				OtpExpiresAt:     now.Add(5 * time.Minute),
+				SessionExpiresAt: now.Add(15 * time.Minute),
+				CreatedAt:        now,
+			}
+			dummyMailLog := &model.MailAuthLogRecord{
+				LogID:     uuid.NewString(),
+				UserID:    sql.NullString{},
+				Email:     req.Email,
+				AuthType:  "SIGNUP",
+				IPAddress: clientIP,
+				EventType: "ISSUED",
+				IsSuccess: true,
+				IsDummy:   true,
+				AccessAt:  now,
+			}
+			dummyAccessLog := &model.AccessLogRecord{
+				LogID:      uuid.NewString(),
+				UserID:     sql.NullString{},
+				IPAddress:  clientIP,
+				Endpoint:   "POST auth/register/request-otp",
+				ResourceID: sql.NullString{String: dummySessionID, Valid: true},
+				AccessAt:   now,
+			}
+			if saveErr := s.repo.SaveSessionWithLogs(ctx, dummySession, dummyMailLog, dummyAccessLog); saveErr != nil {
+				return nil, saveErr
+			}
+
+			// ダミー処理として遅延後に同一構造の200を返却（実メール送信はスキップ）
+			s.deps.Sleep(s.deps.ResponseDelay())
+			return &model.RegisterRequestOtpResponse{
+				OtpSessionID:     dummySessionID,
+				MaskedEmail:      maskedEmail,
+				ExpiresInSeconds: 300,
+				CooldownSeconds:  60,
+			}, nil
+		}
 		return nil, err
 	}
 

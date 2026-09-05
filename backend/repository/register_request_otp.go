@@ -4,9 +4,31 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"synctask/backend/model"
 )
+
+// ErrConflict は一意制約違反（既に有効なOTPセッションやアカウントが存在する）競合エラーを表します。
+var ErrConflict = errors.New("conflict: active otp session or account already exists")
+
+// isUniqueViolation はエラーが一意制約違反であるかを判定します。
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrConflict) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+		return true
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "unique") || strings.Contains(errMsg, "23505") || strings.Contains(errMsg, "duplicate key")
+}
 
 // RegisterRequestOtpRepository は新規登録OTP発行の永続化インターフェースです。
 type RegisterRequestOtpRepository interface {
@@ -237,6 +259,9 @@ func (r *registerRequestOtpRepository) SaveSessionWithLogs(ctx context.Context, 
 		session.CreatedAt,
 	)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrConflict
+		}
 		return err
 	}
 

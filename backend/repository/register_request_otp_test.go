@@ -336,4 +336,20 @@ func TestRegisterRequestOtpRepository_SaveSessionWithLogs(t *testing.T) {
 		assert.ErrorIs(t, err, dbErr)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("異常系: 一意制約エラー発生時にErrConflictを返しロールバックすること", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer db.Close()
+		repo := NewRegisterRequestOtpRepository(db)
+		uniqueErr := errors.New("duplicate key value violates unique constraint \"uq_otp_session_active_pending_email\"")
+
+		mock.ExpectBegin()
+		mock.ExpectExec("INSERT INTO OTP_SESSION").WillReturnError(uniqueErr)
+		mock.ExpectRollback()
+
+		err = repo.SaveSessionWithLogs(context.Background(), session, mailLog, accessLog)
+		assert.ErrorIs(t, err, ErrConflict)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
 }

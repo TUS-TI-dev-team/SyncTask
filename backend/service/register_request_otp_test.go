@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"synctask/backend/model"
+	"synctask/backend/repository"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -370,5 +371,65 @@ func TestRegisterRequestOtpService_RequestOtp(t *testing.T) {
 		res, err := svc.RequestOtp(context.Background(), req, "192.0.2.1")
 		assert.ErrorIs(t, err, dbErr)
 		assert.Nil(t, res)
+	})
+
+	t.Run("準正常系: 一意制約競合時にロールバックしてダミーセッションを作成し実メール送信をスキップして遅延後に200結果を返すこと", func(t *testing.T) {
+		mailerCalled := false
+		sleepCalled := false
+		savedSessions := []*model.OtpSessionRecord{}
+
+		saveCallCount := 0
+		repo := &mockRegisterRequestOtpRepository{
+			findActiveUserFunc: func(ctx context.Context, email string) (bool, error) {
+				return false, nil
+			},
+			findActiveOtpSessionFunc: func(ctx context.Context, email string) (bool, error) {
+				return false, nil
+			},
+			saveSessionWithLogsFunc: func(ctx context.Context, session *model.OtpSessionRecord, mailLog *model.MailAuthLogRecord, accessLog *model.AccessLogRecord) error {
+				saveCallCount++
+				savedSessions = append(savedSessions, session)
+				if saveCallCount == 1 {
+					// 1回目の通常セッション保存で一意制約競合
+					return repository.ErrConflict
+				}
+				// 2回目のダミーセッション保存は成功
+				return nil
+			},
+		}
+
+		mailer := &mockMailer{
+			sendOTPFunc: func(ctx context.Context, toEmail, otp string) error {
+				mailerCalled = true
+				return nil
+			},
+		}
+
+		deps := defaultTestDeps(now)
+		deps.Sleep = func(d time.Duration) {
+			sleepCalled = true
+		}
+
+		svc := NewRegisterRequestOtpService(repo, mailer, deps)
+		req := &model.RegisterRequestOtpRequest{
+			Username: "exampleUser",
+			Email:    "conflict@example.com",
+			Password: "Password123!",
+		}
+
+		res, err := svc.RequestOtp(context.Background(), req, "192.0.2.1")
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Equal(t, "otp_sess_test_12345", res.OtpSessionID)
+		assert.Equal(t, "conf**********@example.com", res.MaskedEmail)
+		assert.False(t, mailerCalled, "実メール送信はスキップされること")
+		assert.True(t, sleepCalled, "遅延が適用されること")
+
+		require.Len(t, savedSessions, 2)
+		// 2回目に保存されたセッションはダミーセッションであること
+		dummySession := savedSessions[1]
+		assert.True(t, dummySession.IsDummy)
+		assert.False(t, dummySession.PendingUsername.Valid)
+		assert.False(t, dummySession.PendingEmail.Valid)
 	})
 }

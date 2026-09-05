@@ -19,8 +19,8 @@ func NewLogMailer() Mailer {
 	return &LogMailer{}
 }
 
-// SendOTP はメール送信をログ出力としてシミュレートします。
+// SendOTP はメール送信をログ出力としてシミュレートします（平文OTPは秘匿します）。
 func (m *LogMailer) SendOTP(ctx context.Context, toEmail, otp string) error {
-	log.Printf("[LogMailer] Send OTP to %s: %s", toEmail, otp)
+	log.Printf("[LogMailer] Send OTP to %s (length: %d, [REDACTED])", toEmail, len(otp))
 	return nil
 }
