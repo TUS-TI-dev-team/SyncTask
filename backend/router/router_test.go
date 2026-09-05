@@ -139,6 +139,25 @@ func TestSetupRouter_GetTask(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestSetupRouter_PatchTask(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	r := SetupRouter(db)
+
+	// 正常系: PATCH /api/tasks/:task_id が登録されておりリクエストをルーティングできること
+	// 未認証（userIDなし）で PATCH /api/tasks/:task_id にアクセスすると 401 が返る（ルートが正しくハンドラーに到達している確認）
+	req, _ := http.NewRequest(http.MethodPatch, "/api/tasks/7c9e6679-7425-40de-944b-e07fc1f90ae7", bytes.NewBufferString(`{"title":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
 func TestSetupRouter_TrustedProxies_DirectAccess(t *testing.T) {
 	previousMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
@@ -204,4 +223,3 @@ func TestSetupRouter_TrustedProxies_WithTrustedProxy(t *testing.T) {
 	// 未信頼プロキシからのリクエストなので X-Forwarded-For は無視され RemoteAddr が採用される
 	assert.Equal(t, "198.51.100.1", wUntrusted.Body.String())
 }
-

@@ -14,6 +14,7 @@ var jst = time.FixedZone("JST", 9*60*60)
 type TaskService interface {
 	CreateTask(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error)
 	GetTask(ctx context.Context, userID, taskID string) (*model.GetTaskResponse, error)
+	PatchTask(ctx context.Context, userID, taskID string, req *model.PatchTaskRequest) (*model.PatchTaskResponse, error)
 }
 
 type taskService struct {
