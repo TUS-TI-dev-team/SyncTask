@@ -46,5 +46,14 @@ services:
       - DB_SSLMODE=disable
       - FRONTEND_URL=http://localhost:3000
 
+  pgweb:
+    image: sosedoff/pgweb
+    ports:
+      - "8081:8081"
+    environment:
+      PGWEB_DATABASE_URL: postgres://${DB_USER:-synctask}:${DB_PASSWORD:-synctask_pass}@db:5432/${DB_NAME:-synctask_dev}?sslmode=disable
+    depends_on:
+      - db
+
 volumes:
   db_data:
