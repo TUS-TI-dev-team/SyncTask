@@ -46,14 +46,18 @@ services:
       - DB_SSLMODE=disable
       - FRONTEND_URL=http://localhost:3000
 
-  pgweb:
-    image: sosedoff/pgweb
+  pgadmin:
+    image: dpage/pgadmin4:latest
     ports:
-      - "8081:8081"
+      - "5050:80"
     environment:
-      PGWEB_DATABASE_URL: postgres://${DB_USER:-synctask}:${DB_PASSWORD:-synctask_pass}@db:5432/${DB_NAME:-synctask_dev}?sslmode=disable
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_USER:-pgadmin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin}
     depends_on:
       - db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
   db_data:
+  pgadmin_data:
