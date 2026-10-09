@@ -1,17 +1,29 @@
 {
   "version": 1,
   "skills": {
+    "grill-me": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grill-me/SKILL.md",
+      "computedHash": "9cdbb4b8f7a3aeaef82e6230c9e823500d4a8a1214c726cf342cf9829d34fc7d"
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "ef1641a2047b71b60f1942cd35efb47d3afc9d584dff5a0b01f8c7db923aaa08"
+    },
     "herdr": {
       "source": "herdrdev/herdr",
       "sourceType": "github",
       "skillPath": "skills/herdr/SKILL.md",
-      "computedHash": "e7b27dca5073e9306fc9ca1e152947379adfb52be40c2ef60ee6ca7bc2ca5680"
+      "computedHash": "66715d76e5947497431ec0db32f2693b9c916ad799c3f32b99e6174b4b9c607f"
     },
     "review": {
       "source": "wxmb01/review-skill",
       "sourceType": "github",
       "skillPath": "review/SKILL.md",
-      "computedHash": "a52d05f8f195b9ecb5a96ba36814673698b53ea8ec88c886d5918f14ef5924fb"
+      "computedHash": "72b9803c03cd600562f988b6cd68455fc5587cf40f877938f3098f932d24a533"
     }
   }
 }
