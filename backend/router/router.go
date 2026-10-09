@@ -6,7 +6,6 @@ import (
 
 	_ "synctask/backend/docs"
 	"synctask/backend/handler"
-	"synctask/backend/middleware"
 	"synctask/backend/repository"
 	"synctask/backend/service"
 
@@ -66,7 +65,7 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	registerService := service.NewRegisterRequestOtpService(registerRepo, registerMailer, service.RegisterRequestOtpDependencies{})
 
 	// API ルーティング
-	api := r.Group("/api", middleware.Logger())
+	api := r.Group("/api")
 	{
 		api.POST("/tasks", handler.CreateTaskHandler(taskService))
 		api.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
@@ -75,8 +74,5 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 
 	api.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))
 	api.POST("/auth/register/request-otp", handler.RegisterRequestOtpHandler(registerService))
-
-	api.Use(middleware.Logger())
-
 	return r
 }
