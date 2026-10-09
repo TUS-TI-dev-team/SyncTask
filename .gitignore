@@ -18,3 +18,6 @@ node_modules/
 !.agents/skills/herdr-review-loop/
 !.agents/skills/orchestrate-backend/
 !.agents/skills/endpoint-supervisor/
+
+.claude/skills/*
+.hermes/skills/*
