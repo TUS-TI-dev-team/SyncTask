@@ -29,8 +29,8 @@ func TestTaskRepository_UpdateTask(t *testing.T) {
 		"UPDATED_AT",
 	}
 
-	taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-	userID := "550e8400-e29b-41d4-a716-446655440000"
+	taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
+	userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 	due := time.Date(2026, 8, 21, 23, 59, 0, 0, time.UTC)
 	created := time.Date(2026, 8, 17, 10, 0, 0, 0, time.UTC)
 	updated := time.Date(2026, 8, 17, 13, 0, 0, 0, time.UTC)

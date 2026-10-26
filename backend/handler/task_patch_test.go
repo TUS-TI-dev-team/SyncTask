@@ -21,8 +21,8 @@ func TestPatchTaskHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	defer gin.SetMode(previousMode)
 
-	userID := "550e8400-e29b-41d4-a716-446655440000"
-	taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+	userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
+	taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
 	now := time.Now()
 	due := now.Add(24 * time.Hour)
 

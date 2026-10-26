@@ -64,7 +64,7 @@ func (s *taskService) CreateTask(ctx context.Context, userID string, req *model.
 			if targetDays[dayName] {
 				dueDt := time.Date(cur.Year(), cur.Month(), cur.Day(), dueHour, dueMin, 0, 0, jst)
 				task := &model.Task{
-					ID:          uuid.NewString(),
+					ID:          uuid.Must(uuid.NewV7()).String(),
 					UserID:      userID,
 					Title:       req.Title,
 					Comment:     req.Comment,
@@ -137,7 +137,7 @@ func (s *taskService) CreateTask(ctx context.Context, userID string, req *model.
 	}
 
 	task := &model.Task{
-		ID:          uuid.NewString(),
+		ID:          uuid.Must(uuid.NewV7()).String(),
 		UserID:      userID,
 		Title:       req.Title,
 		Comment:     req.Comment,

@@ -139,7 +139,7 @@ func (r *loginRepository) AttemptLogin(ctx context.Context, attempt *model.Login
 
 // RecordInvalidRequest は入力を評価できない要求をACCESS_LOGだけへ記録します。
 func (r *loginRepository) RecordInvalidRequest(ctx context.Context, ip string, now time.Time) error {
-	_, err := r.db.ExecContext(ctx, insertAccessLogQuery, uuid.NewString(), nil, ip, "POST auth/login", nil, now)
+	_, err := r.db.ExecContext(ctx, insertAccessLogQuery, uuid.Must(uuid.NewV7()).String(), nil, ip, "POST auth/login", nil, now)
 	return err
 }
 
@@ -184,12 +184,12 @@ func upsertIPFailure(ctx context.Context, tx *sql.Tx, attempt *model.LoginAttemp
 
 func insertAttemptLogs(ctx context.Context, tx *sql.Tx, userID any, attempt *model.LoginAttempt, success bool) error {
 	if _, err := tx.ExecContext(ctx, insertLoginLogQuery,
-		uuid.NewString(), userID, attempt.Email, attempt.IP, success, false, attempt.Now,
+		uuid.Must(uuid.NewV7()).String(), userID, attempt.Email, attempt.IP, success, false, attempt.Now,
 	); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, insertAccessLogQuery,
-		uuid.NewString(), userID, attempt.IP, "POST auth/login", nil, attempt.Now,
+		uuid.Must(uuid.NewV7()).String(), userID, attempt.IP, "POST auth/login", nil, attempt.Now,
 	)
 	return err
 }

@@ -31,8 +31,8 @@
 {
   "tasks": [
     {
-      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "id": "018f47a2-9c3d-7abc-8def-0123456789ac",
+      "user_id": "018f47a2-9c3d-7abc-8def-0123456789ab",
       "title": "課題レポート提出",
       "comment": "第5章の要約を含むこと\n参考文献を記載",
       "priority": "high",
@@ -51,8 +51,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `tasks` | array[object] | ○ | タスクオブジェクトの配列（検索・絞り込みに該当するタスクが0件の場合は空配列 `[]`） |
-| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
-| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ac`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `tasks[].title` | string | ○ | タスクタイトル |
 | `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -138,8 +138,8 @@
   "created_count": 10,
   "tasks": [
     {
-      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "id": "018f47a2-9c3d-7abc-8def-0123456789ac",
+      "user_id": "018f47a2-9c3d-7abc-8def-0123456789ab",
       "title": "週次ゼミ発表準備",
       "comment": "進捗スライド作成",
       "priority": "medium",
@@ -159,8 +159,8 @@
 | :--- | :--- | :---: | :--- |
 | `created_count` | integer | ○ | 作成されたタスク件数（単一作成時は `1`、繰り返し一括作成時は作成数） |
 | `tasks` | array[object] | ○ | 作成されたタスクオブジェクトの配列 |
-| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
-| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `tasks[].id` | string | ○ | タスクID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ac`） |
+| `tasks[].user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `tasks[].title` | string | ○ | タスクタイトル |
 | `tasks[].comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `tasks[].priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -202,8 +202,8 @@
 ```json
 {
   "task": {
-    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ac",
+    "user_id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "title": "課題レポート提出",
     "comment": "第5章の要約を含むこと",
     "priority": "high",
@@ -221,8 +221,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `task` | object | ○ | 詳細取得されたタスクオブジェクト |
-| `task.id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
-| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `task.id` | string | ○ | タスクID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ac`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `task.title` | string | ○ | タスクタイトル |
 | `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |
@@ -284,8 +284,8 @@
 ```json
 {
   "task": {
-    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ac",
+    "user_id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "title": "課題レポート提出（修正版）",
     "comment": "参考文献の追記完了",
     "priority": "high",
@@ -303,8 +303,8 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `task` | object | ○ | 更新後のタスクオブジェクト |
-| `task.id` | string | ○ | タスクID（UUID形式、例: `7c9e6679-7425-40de-944b-e07fc1f90ae7`） |
-| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `task.id` | string | ○ | タスクID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ac`） |
+| `task.user_id` | string | ○ | 所有ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `task.title` | string | ○ | タスクタイトル |
 | `task.comment` | string | ○ | タスクコメント（未入力時は空文字 `""`） |
 | `task.priority` | string | ○ | 優先度（`high`, `medium`, `low`） |

@@ -7,9 +7,9 @@ import (
 // Task はタスクエンティティを表します。
 type Task struct {
 	// ID はタスクの一意識別子（UUID）です
-	ID string `json:"id" example:"7c9e6679-7425-40de-944b-e07fc1f90ae7"`
+	ID string `json:"id" example:"018f47a2-9c3d-7abc-8def-0123456789ac"`
 	// UserID は所有ユーザーの一意識別子（UUID）です
-	UserID string `json:"user_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	UserID string `json:"user_id" example:"018f47a2-9c3d-7abc-8def-0123456789ab"`
 	// Title はタスクのタイトルです（1〜100文字）
 	Title string `json:"title" example:"課題レポート提出"`
 	// Comment はタスクの補足コメント・詳細説明です（0〜1000文字）

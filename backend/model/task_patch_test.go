@@ -102,8 +102,8 @@ func TestPatchTaskRequest_UnmarshalAndValidate(t *testing.T) {
 
 	t.Run("正常系: 読み取り専用フィールド（id, user_id 等）が含まれていても無視されて通過すること", func(t *testing.T) {
 		body := `{
-			"id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-			"user_id": "550e8400-e29b-41d4-a716-446655440000",
+			"id": "018f47a2-9c3d-7abc-8def-0123456789ac",
+			"user_id": "018f47a2-9c3d-7abc-8def-0123456789ab",
 			"created_at": "2026-08-17T10:00:00+09:00",
 			"updated_at": "2026-08-17T11:00:00+09:00",
 			"title": "更新後タイトル"

@@ -25,8 +25,8 @@ func TestTaskRepository_CreateTask(t *testing.T) {
 		due := time.Date(2026, 8, 20, 23, 59, 0, 0, time.UTC)
 		now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 		task := &model.Task{
-			ID:          "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-			UserID:      "550e8400-e29b-41d4-a716-446655440000",
+			ID:          "018f47a2-9c3d-7abc-8def-0123456789ac",
+			UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 			Title:       "課題レポート提出",
 			Comment:     "第5章の要約を含むこと",
 			Priority:    "high",
@@ -68,8 +68,8 @@ func TestTaskRepository_CreateTask(t *testing.T) {
 		ctx := context.Background()
 
 		task := &model.Task{
-			ID:         "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-			UserID:     "550e8400-e29b-41d4-a716-446655440000",
+			ID:         "018f47a2-9c3d-7abc-8def-0123456789ac",
+			UserID:     "018f47a2-9c3d-7abc-8def-0123456789ab",
 			Title:      "課題レポート提出",
 			Priority:   "high",
 			Status:     "not_started",
@@ -116,7 +116,7 @@ func TestTaskRepository_CreateTasks(t *testing.T) {
 		tasks := []*model.Task{
 			{
 				ID:          "task-id-1",
-				UserID:      "550e8400-e29b-41d4-a716-446655440000",
+				UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 				Title:       "週次ゼミ発表準備 1",
 				Comment:     "進捗スライド作成",
 				Priority:    "medium",
@@ -129,7 +129,7 @@ func TestTaskRepository_CreateTasks(t *testing.T) {
 			},
 			{
 				ID:          "task-id-2",
-				UserID:      "550e8400-e29b-41d4-a716-446655440000",
+				UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 				Title:       "週次ゼミ発表準備 2",
 				Comment:     "進捗スライド作成",
 				Priority:    "medium",
@@ -178,7 +178,7 @@ func TestTaskRepository_CreateTasks(t *testing.T) {
 		tasks := []*model.Task{
 			{
 				ID:         "task-id-1",
-				UserID:     "550e8400-e29b-41d4-a716-446655440000",
+				UserID:     "018f47a2-9c3d-7abc-8def-0123456789ab",
 				Title:      "週次ゼミ発表準備 1",
 				Priority:   "medium",
 				Status:     "not_started",
@@ -186,7 +186,7 @@ func TestTaskRepository_CreateTasks(t *testing.T) {
 			},
 			{
 				ID:         "task-id-2",
-				UserID:     "550e8400-e29b-41d4-a716-446655440000",
+				UserID:     "018f47a2-9c3d-7abc-8def-0123456789ab",
 				Title:      "週次ゼミ発表準備 2",
 				Priority:   "medium",
 				Status:     "not_started",

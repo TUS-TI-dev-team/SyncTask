@@ -11,6 +11,7 @@ import (
 	"synctask/backend/repository"
 	"synctask/backend/util"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,11 +25,12 @@ type LoginService interface {
 
 // LoginDependencies は時間、待機、乱数、パスワード照合のテスト可能な依存です。
 type LoginDependencies struct {
-	Now             func() time.Time
-	Sleep           func(time.Duration)
-	GenerateToken   func() (string, error)
-	ComparePassword func(string, string) bool
-	FailureDelay    func() time.Duration
+	Now               func() time.Time
+	Sleep             func(time.Duration)
+	GenerateSessionID func() (string, error)
+	GenerateToken     func() (string, error)
+	ComparePassword   func(string, string) bool
+	FailureDelay      func() time.Duration
 }
 
 type loginService struct {
@@ -43,6 +45,15 @@ func NewLoginService(repo repository.LoginRepository, deps LoginDependencies) Lo
 	}
 	if deps.Sleep == nil {
 		deps.Sleep = time.Sleep
+	}
+	if deps.GenerateSessionID == nil {
+		deps.GenerateSessionID = func() (string, error) {
+			id, err := uuid.NewRandom()
+			if err != nil {
+				return "", err
+			}
+			return id.String(), nil
+		}
 	}
 	if deps.GenerateToken == nil {
 		deps.GenerateToken = func() (string, error) {
@@ -74,7 +85,7 @@ func (s *loginService) Login(ctx context.Context, req *model.LoginRequest, meta 
 		return nil, err
 	}
 
-	sessionID, err := s.deps.GenerateToken()
+	sessionID, err := s.deps.GenerateSessionID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
