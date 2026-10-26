@@ -35,8 +35,9 @@ func TestLoginService_Login(t *testing.T) {
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
 	meta := model.LoginMetadata{IP: "203.0.113.10", UserAgent: "test-agent", OldSessionID: "old-session"}
 
-	t.Run("正常系: @spec 認証成功時にUUIDv4セッションIDとCSRFトークンを返すこと", func(t *testing.T) {
+	t.Run("正常系: @spec 認証成功時に独立したUUIDv4のセッションIDとCSRFトークンを返すこと", func(t *testing.T) {
 		var generatedSessionID string
+		var generatedCSRFToken string
 		sleepCalls := 0
 		repo := &mockLoginRepository{attemptFunc: func(_ context.Context, attempt *model.LoginAttempt, check repository.PasswordCheck) (*model.LoginAttemptResult, error) {
 			assert.Equal(t, "user@example.com", attempt.Email)
@@ -47,7 +48,11 @@ func TestLoginService_Login(t *testing.T) {
 			parsedSessionID, parseErr := uuid.Parse(attempt.SessionID)
 			require.NoError(t, parseErr)
 			assert.Equal(t, uuid.Version(4), parsedSessionID.Version())
-			assert.Equal(t, "csrf-token", attempt.CSRFToken)
+			generatedCSRFToken = attempt.CSRFToken
+			parsedCSRFToken, csrfParseErr := uuid.Parse(attempt.CSRFToken)
+			require.NoError(t, csrfParseErr)
+			assert.Equal(t, uuid.Version(4), parsedCSRFToken.Version())
+			assert.NotEqual(t, attempt.SessionID, attempt.CSRFToken)
 			assert.True(t, check("$hash"))
 			return &model.LoginAttemptResult{
 				Status: model.LoginStatusSuccess,
@@ -58,9 +63,6 @@ func TestLoginService_Login(t *testing.T) {
 		svc := NewLoginService(repo, LoginDependencies{
 			Now:   func() time.Time { return now },
 			Sleep: func(time.Duration) { sleepCalls++ },
-			GenerateToken: func() (string, error) {
-				return "csrf-token", nil
-			},
 			ComparePassword: func(hash, password string) bool {
 				assert.Equal(t, "$hash", hash)
 				assert.Equal(t, "Password123!", password)
@@ -73,7 +75,7 @@ func TestLoginService_Login(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, generatedSessionID, got.SessionID)
-		assert.Equal(t, "csrf-token", got.CSRFToken)
+		assert.Equal(t, generatedCSRFToken, got.CSRFToken)
 		assert.Equal(t, 30*24*time.Hour, got.MaxAge)
 		assert.Equal(t, "user-id", got.Response.User.ID)
 		assert.Equal(t, 0, sleepCalls)
@@ -96,7 +98,7 @@ func TestLoginService_Login(t *testing.T) {
 			},
 			Sleep:             func(d time.Duration) { slept = d },
 			GenerateSessionID: func() (string, error) { return "session-token", nil },
-			GenerateToken:     sequentialTokens("csrf-token"),
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
 			ComparePassword:   func(string, string) bool { return false },
 			FailureDelay:      func() time.Duration { return time.Second },
 		})
@@ -120,7 +122,7 @@ func TestLoginService_Login(t *testing.T) {
 			Now:               fixedAdvancingClock(now, 100*time.Millisecond),
 			Sleep:             func(d time.Duration) { slept = d },
 			GenerateSessionID: func() (string, error) { return "session-token", nil },
-			GenerateToken:     sequentialTokens("csrf-token"),
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
 			ComparePassword:   func(string, string) bool { return false },
 			FailureDelay:      func() time.Duration { return time.Second },
 		})
@@ -155,7 +157,7 @@ func TestLoginService_Login(t *testing.T) {
 			Now:               func() time.Time { return now },
 			Sleep:             func(time.Duration) { sleepCalls++ },
 			GenerateSessionID: func() (string, error) { return "session-token", nil },
-			GenerateToken:     sequentialTokens("unused"),
+			GenerateCSRFToken: sequentialTokens("unused"),
 			ComparePassword:   func(string, string) bool { return false },
 			FailureDelay:      func() time.Duration { return time.Second },
 		})
@@ -179,7 +181,7 @@ func TestLoginService_Login(t *testing.T) {
 			Now:               func() time.Time { return now },
 			Sleep:             func(time.Duration) {},
 			GenerateSessionID: func() (string, error) { return "session-token", nil },
-			GenerateToken:     sequentialTokens("csrf-token"),
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
 			ComparePassword:   func(string, string) bool { return false },
 			FailureDelay:      func() time.Duration { return time.Second },
 		})
@@ -244,7 +246,7 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 		svc := NewLoginService(repo, LoginDependencies{
 			Now:               func() time.Time { return now },
 			GenerateSessionID: func() (string, error) { return "session-token", nil },
-			GenerateToken: func() (string, error) {
+			GenerateCSRFToken: func() (string, error) {
 				calls++
 				return "", errors.New("token failed")
 			},
@@ -286,7 +288,7 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			Now:               fixedAdvancingClock(now, 2*time.Second),
 			Sleep:             func(time.Duration) { sleepCalls++ },
 			GenerateSessionID: func() (string, error) { return "session", nil },
-			GenerateToken:     sequentialTokens("csrf"),
+			GenerateCSRFToken: sequentialTokens("csrf"),
 			ComparePassword:   func(string, string) bool { return false },
 			FailureDelay:      func() time.Duration { return time.Second },
 		})
@@ -304,7 +306,7 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 		svc := NewLoginService(repo, LoginDependencies{
 			Now:               func() time.Time { return now },
 			GenerateSessionID: func() (string, error) { return "session", nil },
-			GenerateToken:     sequentialTokens("csrf"),
+			GenerateCSRFToken: sequentialTokens("csrf"),
 			ComparePassword:   func(string, string) bool { return true },
 		})
 
@@ -321,7 +323,7 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 		svc := NewLoginService(repo, LoginDependencies{
 			Now:               func() time.Time { return now },
 			GenerateSessionID: func() (string, error) { return "session", nil },
-			GenerateToken:     sequentialTokens("csrf"),
+			GenerateCSRFToken: sequentialTokens("csrf"),
 			ComparePassword:   func(string, string) bool { return false },
 		})
 

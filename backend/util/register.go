@@ -36,15 +36,22 @@ func MaskEmail(email string) string {
 	return prefix + "**********" + domainPart
 }
 
-// GenerateOTPSessionID はOTPセッション用の推測困難なIDを生成します。
+// GenerateUUIDv4 は暗号学的乱数に基づくUUIDv4を生成します。
 //
 // @spec UUIDv4形式で生成する。
-func GenerateOTPSessionID() (string, error) {
+func GenerateUUIDv4() (string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return "", err
 	}
 	return id.String(), nil
+}
+
+// GenerateOTPSessionID はOTPセッション用の推測困難なIDを生成します。
+//
+// @spec UUIDv4形式で生成する。
+func GenerateOTPSessionID() (string, error) {
+	return GenerateUUIDv4()
 }
 
 const otpChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"

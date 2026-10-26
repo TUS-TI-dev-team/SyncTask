@@ -63,6 +63,16 @@ func TestGenerateOTPSessionID(t *testing.T) {
 	})
 }
 
+func TestGenerateUUIDv4(t *testing.T) {
+	t.Run("正常系: @spec 暗号学的乱数に基づくUUIDv4を生成すること", func(t *testing.T) {
+		id, err := GenerateUUIDv4()
+		require.NoError(t, err)
+		parsed, parseErr := uuid.Parse(id)
+		require.NoError(t, parseErr)
+		assert.Equal(t, uuid.Version(4), parsed.Version())
+	})
+}
+
 func TestGenerateOTP(t *testing.T) {
 	t.Run("正常系: 8桁の大文字英数字（大文字英字および数字のみ）を生成すること", func(t *testing.T) {
 		otpRegex := regexp.MustCompile(`^[0-9A-Z]{8}$`)

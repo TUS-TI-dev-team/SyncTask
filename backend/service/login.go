@@ -11,7 +11,6 @@ import (
 	"synctask/backend/repository"
 	"synctask/backend/util"
 
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -27,8 +26,8 @@ type LoginService interface {
 type LoginDependencies struct {
 	Now               func() time.Time
 	Sleep             func(time.Duration)
-	GenerateSessionID func() (string, error)
-	GenerateToken     func() (string, error)
+	GenerateSessionID func() (string, error) // セッションID用UUIDv4生成関数
+	GenerateCSRFToken func() (string, error) // CSRFトークン用UUIDv4生成関数
 	ComparePassword   func(string, string) bool
 	FailureDelay      func() time.Duration
 }
@@ -47,18 +46,10 @@ func NewLoginService(repo repository.LoginRepository, deps LoginDependencies) Lo
 		deps.Sleep = time.Sleep
 	}
 	if deps.GenerateSessionID == nil {
-		deps.GenerateSessionID = func() (string, error) {
-			id, err := uuid.NewRandom()
-			if err != nil {
-				return "", err
-			}
-			return id.String(), nil
-		}
+		deps.GenerateSessionID = util.GenerateUUIDv4
 	}
-	if deps.GenerateToken == nil {
-		deps.GenerateToken = func() (string, error) {
-			return util.GenerateSecureToken(rand.Reader, 32)
-		}
+	if deps.GenerateCSRFToken == nil {
+		deps.GenerateCSRFToken = util.GenerateUUIDv4
 	}
 	if deps.ComparePassword == nil {
 		deps.ComparePassword = func(hash, password string) bool {
@@ -76,6 +67,7 @@ func NewLoginService(repo repository.LoginRepository, deps LoginDependencies) Lo
 // @spec 入力不正は遅延と失敗カウンター加算を行わずACCESS_LOGだけを記録する。
 // @spec 401と429は処理開始から1.0秒±0.1秒となるよう待機する。
 // @spec 成功時は新規セッション/CSRFトークンを返し人工遅延しない。
+// @spec セッションIDおよびCSRFトークンはUUIDv4で生成する。
 func (s *loginService) Login(ctx context.Context, req *model.LoginRequest, meta model.LoginMetadata) (*model.LoginServiceResult, error) {
 	startedAt := s.deps.Now()
 	if err := req.Validate(); err != nil {
@@ -89,7 +81,7 @@ func (s *loginService) Login(ctx context.Context, req *model.LoginRequest, meta 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
-	csrfToken, err := s.deps.GenerateToken()
+	csrfToken, err := s.deps.GenerateCSRFToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate csrf token: %w", err)
 	}
