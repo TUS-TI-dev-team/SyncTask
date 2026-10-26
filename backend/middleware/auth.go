@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func Auth() gin.HandlerFunc {
@@ -13,9 +14,17 @@ func Auth() gin.HandlerFunc {
 		if err != nil {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			log.Print("sync_task_sid not specified!")
-			return 
+			return
 		}
 
-		log.Printf("sync_task_sid: %v", sid)
+		if _, err := uuid.Parse(sid); err != nil {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			log.Print("sync_task_sid not specified!")
+			return
+		}
+
+		// TODO: service/login_session.go を作り、それを呼んで認証を実現する。
+
+		c.Next()
 	}
 }
