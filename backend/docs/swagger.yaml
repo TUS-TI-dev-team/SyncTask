@@ -192,7 +192,7 @@ definitions:
         type: string
       id:
         description: ID はタスクの一意識別子（UUID）です
-        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        example: 018f47a2-9c3d-7abc-8def-0123456789ac
         type: string
       is_pinned:
         description: IsPinned はピン留めフラグです
@@ -224,7 +224,7 @@ definitions:
         type: string
       user_id:
         description: UserID は所有ユーザーの一意識別子（UUID）です
-        example: 550e8400-e29b-41d4-a716-446655440000
+        example: 018f47a2-9c3d-7abc-8def-0123456789ab
         type: string
     type: object
 host: localhost:8080

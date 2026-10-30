@@ -21,8 +21,8 @@ func TestTaskRepository_GetTaskByID(t *testing.T) {
 		repo := NewTaskRepository(db)
 		ctx := context.Background()
 
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-		userID := "550e8400-e29b-41d4-a716-446655440000"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 		due := time.Date(2026, 8, 20, 23, 59, 0, 0, time.UTC)
 		now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 
@@ -83,8 +83,8 @@ func TestTaskRepository_GetTaskByID(t *testing.T) {
 		repo := NewTaskRepository(db)
 		ctx := context.Background()
 
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-		userID := "550e8400-e29b-41d4-a716-446655440000"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 		now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 
 		columns := []string{
@@ -145,7 +145,7 @@ func TestTaskRepository_GetTaskByID(t *testing.T) {
 		ctx := context.Background()
 
 		taskID := "non-existent-task-id"
-		userID := "550e8400-e29b-41d4-a716-446655440000"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 
 		mock.ExpectQuery("SELECT TASK_ID, USER_ID, TITLE, PRIORITY, DUE_DATETIME, STATUS, IS_PINNED, COMMENT, SEARCH_TEXT, CREATED_AT, UPDATED_AT FROM TASK WHERE TASK_ID = \\$1 AND USER_ID = \\$2").
 			WithArgs(taskID, userID).
@@ -165,8 +165,8 @@ func TestTaskRepository_GetTaskByID(t *testing.T) {
 		repo := NewTaskRepository(db)
 		ctx := context.Background()
 
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-		userID := "550e8400-e29b-41d4-a716-446655440000"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 		dbErr := errors.New("database error")
 
 		mock.ExpectQuery("SELECT TASK_ID, USER_ID, TITLE, PRIORITY, DUE_DATETIME, STATUS, IS_PINNED, COMMENT, SEARCH_TEXT, CREATED_AT, UPDATED_AT FROM TASK WHERE TASK_ID = \\$1 AND USER_ID = \\$2").

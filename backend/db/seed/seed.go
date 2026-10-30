@@ -45,19 +45,19 @@ type SeedSession struct {
 // パスワードはすべて開発用の固定値 "Password123!" です。
 var users = []SeedUser{
 	{
-		UserID:   "00000000-0000-4000-8000-000000000001",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000001",
 		UserName: "alice",
 		Email:    "alice@example.com",
 		Password: "Password123!",
 	},
 	{
-		UserID:   "00000000-0000-4000-8000-000000000002",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000002",
 		UserName: "bob",
 		Email:    "bob@example.com",
 		Password: "Password123!",
 	},
 	{
-		UserID:   "00000000-0000-4000-8000-000000000003",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000003",
 		UserName: "carol",
 		Email:    "carol@example.com",
 		Password: "Password123!",
@@ -75,8 +75,8 @@ var (
 var tasks = []SeedTask{
 	// --- alice ---
 	{
-		TaskID:    "00000000-0000-4000-8000-000000000101",
-		UserID:    "00000000-0000-4000-8000-000000000001",
+		TaskID:    "018f47a2-9c3d-7abc-8def-000000000101",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000001",
 		Title:     "四半期レポートの作成",
 		Comment:   "上司への提出用。売上データをまとめる",
 		Priority:  "high",
@@ -85,30 +85,30 @@ var tasks = []SeedTask{
 		DueOffset: &threeDay,
 	},
 	{
-		TaskID:   "00000000-0000-4000-8000-000000000102",
-		UserID:   "00000000-0000-4000-8000-000000000001",
+		TaskID:   "018f47a2-9c3d-7abc-8def-000000000102",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000001",
 		Title:    "チームMTGの議事録まとめ",
 		Priority: "medium",
 		Status:   "not_started",
 	},
 	{
-		TaskID:   "00000000-0000-4000-8000-000000000103",
-		UserID:   "00000000-0000-4000-8000-000000000001",
+		TaskID:   "018f47a2-9c3d-7abc-8def-000000000103",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000001",
 		Title:    "Blog article draft",
 		Comment:  "Tech blog for next release",
 		Priority: "low",
 		Status:   "not_started",
 	},
 	{
-		TaskID:   "00000000-0000-4000-8000-000000000104",
-		UserID:   "00000000-0000-4000-8000-000000000001",
+		TaskID:   "018f47a2-9c3d-7abc-8def-000000000104",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000001",
 		Title:    "経費精算",
 		Priority: "medium",
 		Status:   "completed",
 	},
 	{
-		TaskID:    "00000000-0000-4000-8000-000000000105",
-		UserID:    "00000000-0000-4000-8000-000000000001",
+		TaskID:    "018f47a2-9c3d-7abc-8def-000000000105",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000001",
 		Title:     "本番リリース手順書レビュー",
 		Comment:   "インフラチームと共有する",
 		Priority:  "high",
@@ -117,8 +117,8 @@ var tasks = []SeedTask{
 	},
 	// --- bob ---
 	{
-		TaskID:    "00000000-0000-4000-8000-000000000201",
-		UserID:    "00000000-0000-4000-8000-000000000002",
+		TaskID:    "018f47a2-9c3d-7abc-8def-000000000201",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000002",
 		Title:     "新機能の設計レビュー",
 		Priority:  "high",
 		Status:    "in_progress",
@@ -126,23 +126,23 @@ var tasks = []SeedTask{
 		DueOffset: &tenDays,
 	},
 	{
-		TaskID:   "00000000-0000-4000-8000-000000000202",
-		UserID:   "00000000-0000-4000-8000-000000000002",
+		TaskID:   "018f47a2-9c3d-7abc-8def-000000000202",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000002",
 		Title:    "バグチケットのトリアージ",
 		Priority: "medium",
 		Status:   "not_started",
 	},
 	{
-		TaskID:   "00000000-0000-4000-8000-000000000203",
-		UserID:   "00000000-0000-4000-8000-000000000002",
+		TaskID:   "018f47a2-9c3d-7abc-8def-000000000203",
+		UserID:   "018f47a2-9c3d-7abc-8def-000000000002",
 		Title:    "Weekly sync notes",
 		Priority: "low",
 		Status:   "completed",
 	},
 	// --- carol ---
 	{
-		TaskID:    "00000000-0000-4000-8000-000000000301",
-		UserID:    "00000000-0000-4000-8000-000000000003",
+		TaskID:    "018f47a2-9c3d-7abc-8def-000000000301",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000003",
 		Title:     "請求書の確認", // 期限切れタスクのテスト用
 		Priority:  "medium",
 		Status:    "not_started",
@@ -154,13 +154,13 @@ var tasks = []SeedTask{
 // 有効なセッション Cookie を用いた API 動作テストに使用できます。
 var sessions = []SeedSession{
 	{
-		SessionID: "seed-session-alice-00000000000000000000000000000001",
-		UserID:    "00000000-0000-4000-8000-000000000001",
+		SessionID: "00000000-0000-4000-8000-000000000011",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000001",
 		UserAgent: "seed-data (alice)",
 	},
 	{
-		SessionID: "seed-session-bob-000000000000000000000000000000001",
-		UserID:    "00000000-0000-4000-8000-000000000002",
+		SessionID: "00000000-0000-4000-8000-000000000012",
+		UserID:    "018f47a2-9c3d-7abc-8def-000000000002",
 		UserAgent: "seed-data (bob)",
 	},
 }

@@ -99,7 +99,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 	// 1. 入力正規化・バリデーション（違反時は遅延なし 400 Bad Request）
 	if err := req.Validate(); err != nil {
 		accessLog := &model.AccessLogRecord{
-			LogID:     uuid.NewString(),
+			LogID:     uuid.Must(uuid.NewV7()).String(),
 			UserID:    sql.NullString{},
 			IPAddress: clientIP,
 			Endpoint:  "POST auth/register/request-otp",
@@ -179,7 +179,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 	}
 
 	mailLog := &model.MailAuthLogRecord{
-		LogID:     uuid.NewString(),
+		LogID:     uuid.Must(uuid.NewV7()).String(),
 		UserID:    sql.NullString{},
 		Email:     req.Email,
 		AuthType:  "SIGNUP",
@@ -191,7 +191,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 	}
 
 	accessLog := &model.AccessLogRecord{
-		LogID:      uuid.NewString(),
+		LogID:      uuid.Must(uuid.NewV7()).String(),
 		UserID:     sql.NullString{},
 		IPAddress:  clientIP,
 		Endpoint:   "POST auth/register/request-otp",
@@ -223,7 +223,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 				CreatedAt:        now,
 			}
 			dummyMailLog := &model.MailAuthLogRecord{
-				LogID:     uuid.NewString(),
+				LogID:     uuid.Must(uuid.NewV7()).String(),
 				UserID:    sql.NullString{},
 				Email:     req.Email,
 				AuthType:  "SIGNUP",
@@ -234,7 +234,7 @@ func (s *registerRequestOtpService) RequestOtp(ctx context.Context, req *model.R
 				AccessAt:  now,
 			}
 			dummyAccessLog := &model.AccessLogRecord{
-				LogID:      uuid.NewString(),
+				LogID:      uuid.Must(uuid.NewV7()).String(),
 				UserID:     sql.NullString{},
 				IPAddress:  clientIP,
 				Endpoint:   "POST auth/register/request-otp",

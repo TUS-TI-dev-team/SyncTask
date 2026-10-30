@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"math/big"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // MaskEmail はメールアドレスをマスク処理します。
@@ -34,15 +36,22 @@ func MaskEmail(email string) string {
 	return prefix + "**********" + domainPart
 }
 
-// GenerateOTPSessionID はOTPセッション用の推測困難なIDを生成します。
+// GenerateUUIDv4 は暗号学的乱数に基づくUUIDv4を生成します。
 //
-// @spec 接頭辞 'otp_sess_' とURL-safeなランダム文字列で構成される。
-func GenerateOTPSessionID() (string, error) {
-	token, err := GenerateSecureToken(rand.Reader, 24)
+// @spec UUIDv4形式で生成する。
+func GenerateUUIDv4() (string, error) {
+	id, err := uuid.NewRandom()
 	if err != nil {
 		return "", err
 	}
-	return "otp_sess_" + token, nil
+	return id.String(), nil
+}
+
+// GenerateOTPSessionID はOTPセッション用の推測困難なIDを生成します。
+//
+// @spec UUIDv4形式で生成する。
+func GenerateOTPSessionID() (string, error) {
+	return GenerateUUIDv4()
 }
 
 const otpChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"

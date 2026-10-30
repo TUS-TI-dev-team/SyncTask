@@ -151,7 +151,7 @@ func TestSetupRouter_GetTask(t *testing.T) {
 	r := SetupRouter(db)
 
 	// 未認証（userIDなし）で GET /api/tasks/:task_id にアクセスすると 401 が返る（ルートが正しくハンドラーに到達している確認）
-	req, _ := http.NewRequest(http.MethodGet, "/api/tasks/7c9e6679-7425-40de-944b-e07fc1f90ae7", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/api/tasks/018f47a2-9c3d-7abc-8def-0123456789ac", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -169,7 +169,7 @@ func TestSetupRouter_PatchTask(t *testing.T) {
 
 	// 正常系: PATCH /api/tasks/:task_id が登録されておりリクエストをルーティングできること
 	// 未認証（userIDなし）で PATCH /api/tasks/:task_id にアクセスすると 401 が返る（ルートが正しくハンドラーに到達している確認）
-	req, _ := http.NewRequest(http.MethodPatch, "/api/tasks/7c9e6679-7425-40de-944b-e07fc1f90ae7", bytes.NewBufferString(`{"title":"test"}`))
+	req, _ := http.NewRequest(http.MethodPatch, "/api/tasks/018f47a2-9c3d-7abc-8def-0123456789ac", bytes.NewBufferString(`{"title":"test"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

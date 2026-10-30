@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -30,6 +31,9 @@ func TestSeedUser_Format(t *testing.T) {
 		assert.Equal(t, strings.ToLower(u.Email), u.Email, "EMAIL は小文字で定義すること (ログイン照合は小文字正規化前提)")
 		assert.NotEmpty(t, u.UserID)
 		assert.Len(t, u.UserID, 36, "USER_ID は UUID 形式 (36 文字)")
+		id, err := uuid.Parse(u.UserID)
+		require.NoError(t, err)
+		assert.Equal(t, uuid.Version(7), id.Version(), "USER_ID は UUIDv7")
 		assert.Regexp(t, `^[A-Za-z0-9]{2,20}$`, u.UserName, "USER_NAME は 2〜20 文字の英数字")
 	}
 }
@@ -41,6 +45,9 @@ func TestSeedTask_ConstraintValues(t *testing.T) {
 
 	require.NotEmpty(t, tasks)
 	for _, task := range tasks {
+		id, err := uuid.Parse(task.TaskID)
+		require.NoError(t, err)
+		assert.Equal(t, uuid.Version(7), id.Version(), "TASK_ID は UUIDv7")
 		assert.True(t, validPriority[task.Priority], "PRIORITY が不適合: %s (%s)", task.Priority, task.Title)
 		assert.True(t, validStatus[task.Status], "STATUS が不適合: %s (%s)", task.Status, task.Title)
 		assert.NotEmpty(t, task.Title)
@@ -62,11 +69,13 @@ func TestSeedTask_SearchTextNormalization(t *testing.T) {
 	}
 }
 
-// TestSeedSession_IDLength @spec シード: セッション ID が LOGIN_SESSION.SESSION_ID の VARCHAR(64) に適合すること
+// TestSeedSession_IDLength @spec シード: セッション ID がUUIDv4形式であること
 func TestSeedSession_IDLength(t *testing.T) {
 	require.NotEmpty(t, sessions)
 	for _, s := range sessions {
-		assert.LessOrEqual(t, len(s.SessionID), 64, "SESSION_ID は 64 文字以内")
+		id, err := uuid.Parse(s.SessionID)
+		require.NoError(t, err)
+		assert.Equal(t, uuid.Version(4), id.Version(), "SESSION_ID は UUIDv4")
 		assert.NotEmpty(t, s.UserID)
 	}
 }

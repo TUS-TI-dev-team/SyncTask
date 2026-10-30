@@ -12,7 +12,7 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID |
+| ユーザーID | `USER_ID` | `UUID` / `PRIMARY KEY` | UUIDv7 |
 | ユーザー名 | `USER_NAME` | `VARCHAR(20)` / `NOT NULL` | 2〜20文字、英大小数字（同名登録可） |
 | メールアドレス | `EMAIL` | `VARCHAR(320)` / `UNIQUE, NOT NULL` | 認証用メール（登録・更新時に一律小文字へ正規化して保存。論理削除時は衝突回避のため退避形式へ更新） |
 | パスワードハッシュ | `PASSWORD_HASH` | `VARCHAR(255)` / `NOT NULL` | ソルトを付与 + ハッシュ化保存 |
@@ -33,6 +33,7 @@
 >   - 論理削除されたアカウントの元メールアドレスでログイン試行された場合、`EMAIL` 検索では「該当アカウントなし（未登録）」と同一パスを通るため、論理削除の有無は外部に秘匿されます。未登録アドレスや退避済みアドレスへの連続試行に対しては、IPアドレス単位レートリミット（`LOGIN_IP_RATE_LIMIT`）によりブルートフォース攻撃から保護します。
 > - **タスク (`TASK`)**: アカウント論理削除に伴い、所有するタスクデータおよび関連データは即座にDBから物理削除されます。
 > - **セッション (`LOGIN_SESSION`, `OTP_SESSION`)**: ログアウト・アカウント削除時および期限切れ時は物理削除 (`DELETE`) されます。
+> - UUID型への移行 (`000002_uuid_id_columns`) 時は旧形式のセッションIDをUUIDへ変換できないため、既存の `LOGIN_SESSION` と `OTP_SESSION` を削除し、利用者は再ログイン・OTP手続きをやり直します。
 
 ---
 
@@ -42,8 +43,8 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| タスクID | `TASK_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 所有ユーザー |
+| タスクID | `TASK_ID` | `UUID` / `PRIMARY KEY` | UUIDv7 |
+| ユーザーID | `USER_ID` | `UUID` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 所有ユーザー |
 | タスク名 | `TITLE` | `VARCHAR(255)` / `NOT NULL` | 1〜100文字（制御文字不可） |
 | 優先度 | `PRIORITY` | `VARCHAR(20)` / `NOT NULL, DEFAULT 'medium'` | `'low'` (低), `'medium'` (中・初期値), `'high'` (高) |
 | 締切日時 | `DUE_DATETIME` | `TIMESTAMPTZ` | 任意設定（締切未設定時は NULL。日付のみ指定時は該当日 23:59:00+09:00 を設定して保存） |
@@ -66,8 +67,8 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| セッションID | `SESSION_ID` | `VARCHAR(64)` / `PRIMARY KEY` | ランダムトークン / Cookie保存 (`sync_task_sid`) |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | ログインユーザーID |
+| セッションID | `SESSION_ID` | `UUID` / `PRIMARY KEY` | UUIDv4 / Cookie保存 (`sync_task_sid`) |
+| ユーザーID | `USER_ID` | `UUID` / `NOT NULL, FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | ログインユーザーID |
 | 有効期限 | `EXPIRES_AT` | `TIMESTAMPTZ` / `NOT NULL` | 30日 (43200分) / APIアクセス時にSliding Expirationで自動延長 / 期限切れは日次Cron（00:00 JST）で物理削除 |
 | User-Agent | `USER_AGENT` | `TEXT` | クライアント情報 |
 | 作成日時 | `CREATED_AT` | `TIMESTAMPTZ` / `NOT NULL` | |
@@ -80,9 +81,9 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| OTPセッションID | `OTP_SESSION_ID` | `VARCHAR(64)` / `PRIMARY KEY` | Cookie/パラメータ保存 |
+| OTPセッションID | `OTP_SESSION_ID` | `UUID` / `PRIMARY KEY` | UUIDv4 / Cookie/パラメータ保存 |
 | 認証種別 | `PURPOSE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 既存ユーザー識別用（パスワードリセット・メール変更時。新規登録時はNULL） |
+| ユーザーID | `USER_ID` | `UUID` / `FOREIGN KEY (LOGIN_ACCOUNT.USER_ID)` | 既存ユーザー識別用（パスワードリセット・メール変更時。新規登録時はNULL） |
 | 登録予定ユーザー名 | `PENDING_USERNAME` | `VARCHAR(20)` | アカウント作成時は登録予定値 |
 | 認証対象/変更予定メールアドレス | `PENDING_EMAIL` | `VARCHAR(255)` | 実セッションでは認証対象 / 変更予定メールアドレスを小文字へ正規化して保存し、重複排除・排他制御に利用。ダミーセッションでは一意制約競合防止および情報秘匿のためNULLとする（表示には `MASKED_EMAIL` を使用） |
 | マスク済みメールアドレス | `MASKED_EMAIL` | `VARCHAR(320)` / `NOT NULL` | API応答表示用。先頭4文字（ローカル部が4文字未満の場合は先頭1文字）とドメイン以外を固定10文字（`*`）でマスクした値のみを保存し、ダミーセッションの再送応答にも利用 |
@@ -139,8 +140,8 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| ログID | `LOG_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` | 認証成功時または特定可能な場合のUID（未特定時はNULL） |
+| ログID | `LOG_ID` | `UUID` / `PRIMARY KEY` | UUIDv7 |
+| ユーザーID | `USER_ID` | `UUID` | 認証成功時または特定可能な場合のUID（未特定時はNULL） |
 | メールアドレス | `EMAIL` | `VARCHAR(320)` / `NOT NULL` | ログイン試行対象メールアドレス |
 | IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `NOT NULL` | アクセス元IPアドレス |
 | ログイン成否 | `IS_SUCCESS` | `BOOLEAN` / `NOT NULL` | `TRUE` (成功) / `FALSE` (失敗) |
@@ -158,8 +159,8 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| ログID | `LOG_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` | 操作元ユーザーID（未ログイン時はNULL） |
+| ログID | `LOG_ID` | `UUID` / `PRIMARY KEY` | UUIDv7 |
+| ユーザーID | `USER_ID` | `UUID` | 操作元ユーザーID（未ログイン時はNULL） |
 | アクセス元IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `NOT NULL` | クライアントIPアドレス |
 | エンドポイント | `ENDPOINT` | `VARCHAR(1000)` / `NOT NULL` | アクセス先APIパス/メソッド |
 | 操作対象リソースID | `RESOURCE_ID` | `VARCHAR(255)` | 閲覧・操作対象リソースID（タスクID等、該当なし時はNULL） |
@@ -176,8 +177,8 @@
 
 | 項目名 | カラム名 | データ型 / 制約 | 備考 |
 | --- | --- | --- | --- |
-| ログID | `LOG_ID` | `VARCHAR(36)` / `PRIMARY KEY` | UUID |
-| ユーザーID | `USER_ID` | `VARCHAR(36)` | 対象ユーザーID（未登録・未ログイン時はNULL） |
+| ログID | `LOG_ID` | `UUID` / `PRIMARY KEY` | UUIDv7 |
+| ユーザーID | `USER_ID` | `UUID` | 対象ユーザーID（未登録・未ログイン時はNULL） |
 | 対象メールアドレス | `EMAIL` | `VARCHAR(320)` / `NOT NULL` | 認証対象メールアドレス |
 | 認証種別 | `AUTH_TYPE` | `VARCHAR(20)` / `NOT NULL` | `SIGNUP` (新規登録), `PASSWORD_RESET` (パスワードリセット), `EMAIL_CHANGE` (メールアドレス変更) |
 | アクセス元IPアドレス | `IP_ADDRESS` | `VARCHAR(45)` / `NOT NULL` | クライアントIPアドレス |

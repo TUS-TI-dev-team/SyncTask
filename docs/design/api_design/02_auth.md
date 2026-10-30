@@ -83,7 +83,7 @@
 ```json
 {
   "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "username": "exampleUser",
     "email": "user@example.com",
     "created_at": "2026-08-17T12:00:00+09:00",
@@ -95,7 +95,7 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `user` | object | ○ | 本登録完了したユーザーオブジェクト |
-| `user.id` | string | ○ | ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `user.id` | string | ○ | ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `user.username` | string | ○ | ユーザー名（例: `exampleUser`） |
 | `user.email` | string | ○ | メールアドレス（例: `user@example.com`） |
 | `user.created_at` | string | ○ | アカウント登録日時（ISO 8601 JST 形式） |
@@ -202,7 +202,7 @@
 ```json
 {
   "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "username": "exampleUser",
     "email": "user@example.com",
     "created_at": "2026-08-17T12:00:00+09:00",
@@ -214,7 +214,7 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `user` | object | ○ | 認証成功したユーザーオブジェクト |
-| `user.id` | string | ○ | ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `user.id` | string | ○ | ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `user.username` | string | ○ | ユーザー名（例: `exampleUser`） |
 | `user.email` | string | ○ | メールアドレス（例: `user@example.com`） |
 | `user.created_at` | string | ○ | アカウント登録日時（ISO 8601 JST 形式） |
@@ -549,7 +549,7 @@ OTP検証完了後のセッションに基づきパスワードをリセット�
 {
   "message": "Email address updated successfully.",
   "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "username": "exampleUser",
     "email": "new_user@example.com",
     "created_at": "2026-08-17T12:00:00+09:00",

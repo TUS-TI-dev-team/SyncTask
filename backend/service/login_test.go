@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"synctask/backend/model"
 	"synctask/backend/repository"
 
@@ -34,16 +35,24 @@ func TestLoginService_Login(t *testing.T) {
 	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
 	meta := model.LoginMetadata{IP: "203.0.113.10", UserAgent: "test-agent", OldSessionID: "old-session"}
 
-	t.Run("正常系: 認証成功時に新規トークンとユーザーを返し人工遅延しないこと", func(t *testing.T) {
-		tokenCalls := 0
+	t.Run("正常系: @spec 認証成功時に独立したUUIDv4のセッションIDとCSRFトークンを返すこと", func(t *testing.T) {
+		var generatedSessionID string
+		var generatedCSRFToken string
 		sleepCalls := 0
 		repo := &mockLoginRepository{attemptFunc: func(_ context.Context, attempt *model.LoginAttempt, check repository.PasswordCheck) (*model.LoginAttemptResult, error) {
 			assert.Equal(t, "user@example.com", attempt.Email)
 			assert.Equal(t, meta.IP, attempt.IP)
 			assert.Equal(t, meta.UserAgent, attempt.UserAgent)
 			assert.Equal(t, meta.OldSessionID, attempt.OldSessionID)
-			assert.Equal(t, "session-token", attempt.SessionID)
-			assert.Equal(t, "csrf-token", attempt.CSRFToken)
+			generatedSessionID = attempt.SessionID
+			parsedSessionID, parseErr := uuid.Parse(attempt.SessionID)
+			require.NoError(t, parseErr)
+			assert.Equal(t, uuid.Version(4), parsedSessionID.Version())
+			generatedCSRFToken = attempt.CSRFToken
+			parsedCSRFToken, csrfParseErr := uuid.Parse(attempt.CSRFToken)
+			require.NoError(t, csrfParseErr)
+			assert.Equal(t, uuid.Version(4), parsedCSRFToken.Version())
+			assert.NotEqual(t, attempt.SessionID, attempt.CSRFToken)
 			assert.True(t, check("$hash"))
 			return &model.LoginAttemptResult{
 				Status: model.LoginStatusSuccess,
@@ -54,13 +63,6 @@ func TestLoginService_Login(t *testing.T) {
 		svc := NewLoginService(repo, LoginDependencies{
 			Now:   func() time.Time { return now },
 			Sleep: func(time.Duration) { sleepCalls++ },
-			GenerateToken: func() (string, error) {
-				tokenCalls++
-				if tokenCalls == 1 {
-					return "session-token", nil
-				}
-				return "csrf-token", nil
-			},
 			ComparePassword: func(hash, password string) bool {
 				assert.Equal(t, "$hash", hash)
 				assert.Equal(t, "Password123!", password)
@@ -72,8 +74,8 @@ func TestLoginService_Login(t *testing.T) {
 		got, err := svc.Login(context.Background(), &model.LoginRequest{Email: " User@Example.COM ", Password: "Password123!"}, meta)
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		assert.Equal(t, "session-token", got.SessionID)
-		assert.Equal(t, "csrf-token", got.CSRFToken)
+		assert.Equal(t, generatedSessionID, got.SessionID)
+		assert.Equal(t, generatedCSRFToken, got.CSRFToken)
 		assert.Equal(t, 30*24*time.Hour, got.MaxAge)
 		assert.Equal(t, "user-id", got.Response.User.ID)
 		assert.Equal(t, 0, sleepCalls)
@@ -94,10 +96,11 @@ func TestLoginService_Login(t *testing.T) {
 				}
 				return value
 			},
-			Sleep:           func(d time.Duration) { slept = d },
-			GenerateToken:   sequentialTokens("session-token", "csrf-token"),
-			ComparePassword: func(string, string) bool { return false },
-			FailureDelay:    func() time.Duration { return time.Second },
+			Sleep:             func(d time.Duration) { slept = d },
+			GenerateSessionID: func() (string, error) { return "session-token", nil },
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
+			ComparePassword:   func(string, string) bool { return false },
+			FailureDelay:      func() time.Duration { return time.Second },
 		})
 
 		got, err := svc.Login(context.Background(), &model.LoginRequest{Email: "missing@example.com", Password: "Password123!"}, meta)
@@ -116,11 +119,12 @@ func TestLoginService_Login(t *testing.T) {
 			return &model.LoginAttemptResult{Status: model.LoginStatusRateLimited, RetryAfter: 899}, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             fixedAdvancingClock(now, 100*time.Millisecond),
-			Sleep:           func(d time.Duration) { slept = d },
-			GenerateToken:   sequentialTokens("session-token", "csrf-token"),
-			ComparePassword: func(string, string) bool { return false },
-			FailureDelay:    func() time.Duration { return time.Second },
+			Now:               fixedAdvancingClock(now, 100*time.Millisecond),
+			Sleep:             func(d time.Duration) { slept = d },
+			GenerateSessionID: func() (string, error) { return "session-token", nil },
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
+			ComparePassword:   func(string, string) bool { return false },
+			FailureDelay:      func() time.Duration { return time.Second },
 		})
 
 		got, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)
@@ -150,11 +154,12 @@ func TestLoginService_Login(t *testing.T) {
 			},
 		}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             func() time.Time { return now },
-			Sleep:           func(time.Duration) { sleepCalls++ },
-			GenerateToken:   sequentialTokens("unused", "unused"),
-			ComparePassword: func(string, string) bool { return false },
-			FailureDelay:    func() time.Duration { return time.Second },
+			Now:               func() time.Time { return now },
+			Sleep:             func(time.Duration) { sleepCalls++ },
+			GenerateSessionID: func() (string, error) { return "session-token", nil },
+			GenerateCSRFToken: sequentialTokens("unused"),
+			ComparePassword:   func(string, string) bool { return false },
+			FailureDelay:      func() time.Duration { return time.Second },
 		})
 
 		got, err := svc.Login(context.Background(), &model.LoginRequest{Email: "", Password: "short"}, meta)
@@ -173,11 +178,12 @@ func TestLoginService_Login(t *testing.T) {
 			return nil, dbErr
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             func() time.Time { return now },
-			Sleep:           func(time.Duration) {},
-			GenerateToken:   sequentialTokens("session-token", "csrf-token"),
-			ComparePassword: func(string, string) bool { return false },
-			FailureDelay:    func() time.Duration { return time.Second },
+			Now:               func() time.Time { return now },
+			Sleep:             func(time.Duration) {},
+			GenerateSessionID: func() (string, error) { return "session-token", nil },
+			GenerateCSRFToken: sequentialTokens("csrf-token"),
+			ComparePassword:   func(string, string) bool { return false },
+			FailureDelay:      func() time.Duration { return time.Second },
 		})
 
 		got, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)
@@ -221,8 +227,8 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			return nil, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:           func() time.Time { return now },
-			GenerateToken: func() (string, error) { return "", errors.New("token failed") },
+			Now:               func() time.Time { return now },
+			GenerateSessionID: func() (string, error) { return "", errors.New("token failed") },
 		})
 
 		result, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)
@@ -238,12 +244,10 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			return nil, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now: func() time.Time { return now },
-			GenerateToken: func() (string, error) {
+			Now:               func() time.Time { return now },
+			GenerateSessionID: func() (string, error) { return "session-token", nil },
+			GenerateCSRFToken: func() (string, error) {
 				calls++
-				if calls == 1 {
-					return "session-token", nil
-				}
 				return "", errors.New("token failed")
 			},
 		})
@@ -281,11 +285,12 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			return &model.LoginAttemptResult{Status: model.LoginStatusUnauthorized}, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             fixedAdvancingClock(now, 2*time.Second),
-			Sleep:           func(time.Duration) { sleepCalls++ },
-			GenerateToken:   sequentialTokens("session", "csrf"),
-			ComparePassword: func(string, string) bool { return false },
-			FailureDelay:    func() time.Duration { return time.Second },
+			Now:               fixedAdvancingClock(now, 2*time.Second),
+			Sleep:             func(time.Duration) { sleepCalls++ },
+			GenerateSessionID: func() (string, error) { return "session", nil },
+			GenerateCSRFToken: sequentialTokens("csrf"),
+			ComparePassword:   func(string, string) bool { return false },
+			FailureDelay:      func() time.Duration { return time.Second },
 		})
 
 		_, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)
@@ -299,9 +304,10 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			return &model.LoginAttemptResult{Status: model.LoginStatusSuccess}, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             func() time.Time { return now },
-			GenerateToken:   sequentialTokens("session", "csrf"),
-			ComparePassword: func(string, string) bool { return true },
+			Now:               func() time.Time { return now },
+			GenerateSessionID: func() (string, error) { return "session", nil },
+			GenerateCSRFToken: sequentialTokens("csrf"),
+			ComparePassword:   func(string, string) bool { return true },
 		})
 
 		result, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)
@@ -315,9 +321,10 @@ func TestLoginService_AdditionalBranches(t *testing.T) {
 			return &model.LoginAttemptResult{Status: model.LoginStatus("unknown")}, nil
 		}}
 		svc := NewLoginService(repo, LoginDependencies{
-			Now:             func() time.Time { return now },
-			GenerateToken:   sequentialTokens("session", "csrf"),
-			ComparePassword: func(string, string) bool { return false },
+			Now:               func() time.Time { return now },
+			GenerateSessionID: func() (string, error) { return "session", nil },
+			GenerateCSRFToken: sequentialTokens("csrf"),
+			ComparePassword:   func(string, string) bool { return false },
 		})
 
 		result, err := svc.Login(context.Background(), &model.LoginRequest{Email: "user@example.com", Password: "Password123!"}, meta)

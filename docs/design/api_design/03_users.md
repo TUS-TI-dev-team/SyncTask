@@ -18,7 +18,7 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `user` | object | ○ | ユーザー情報オブジェクト |
-| `user.id` | string | ○ | ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `user.id` | string | ○ | ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `user.username` | string | ○ | ユーザー名 |
 | `user.email` | string | ○ | 登録メールアドレス |
 | `user.created_at` | string | ○ | アカウント作成日時（ISO 8601 / `YYYY-MM-DDTHH:mm:ss+09:00`） |
@@ -27,7 +27,7 @@
 ```json
 {
   "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "username": "exampleUser",
     "email": "user@example.com",
     "created_at": "2026-08-01T10:00:00+09:00",
@@ -76,7 +76,7 @@
 | フィールド | 型 | 必須 | 説明 |
 | :--- | :--- | :---: | :--- |
 | `user` | object | ○ | ユーザー情報オブジェクト |
-| `user.id` | string | ○ | ユーザーID（UUID形式、例: `550e8400-e29b-41d4-a716-446655440000`） |
+| `user.id` | string | ○ | ユーザーID（UUID形式、例: `018f47a2-9c3d-7abc-8def-0123456789ab`） |
 | `user.username` | string | ○ | 更新後のユーザー名 |
 | `user.email` | string | ○ | 登録メールアドレス |
 | `user.created_at` | string | ○ | アカウント作成日時（ISO 8601 / `YYYY-MM-DDTHH:mm:ss+09:00`） |
@@ -85,7 +85,7 @@
 ```json
 {
   "user": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "id": "018f47a2-9c3d-7abc-8def-0123456789ab",
     "username": "newUsername",
     "email": "user@example.com",
     "created_at": "2026-08-01T10:00:00+09:00",

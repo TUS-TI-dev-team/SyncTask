@@ -54,8 +54,8 @@ func TestCreateTaskHandler(t *testing.T) {
 			CreatedCount: 1,
 			Tasks: []*model.Task{
 				{
-					ID:          "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-					UserID:      "550e8400-e29b-41d4-a716-446655440000",
+					ID:          "018f47a2-9c3d-7abc-8def-0123456789ac",
+					UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 					Title:       "課題レポート提出",
 					Comment:     "第5章の要約を含むこと",
 					Priority:    "high",
@@ -70,7 +70,7 @@ func TestCreateTaskHandler(t *testing.T) {
 
 		mockSvc := &mockTaskService{
 			createTaskFunc: func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
-				assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", userID)
+				assert.Equal(t, "018f47a2-9c3d-7abc-8def-0123456789ab", userID)
 				assert.Equal(t, "課題レポート提出", req.Title)
 				assert.Equal(t, "第5章の要約を含むこと", req.Comment)
 				assert.Equal(t, "high", req.Priority)
@@ -90,7 +90,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)
@@ -102,8 +102,8 @@ func TestCreateTaskHandler(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, resp.CreatedCount)
 		require.Len(t, resp.Tasks, 1)
-		assert.Equal(t, "7c9e6679-7425-40de-944b-e07fc1f90ae7", resp.Tasks[0].ID)
-		assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", resp.Tasks[0].UserID)
+		assert.Equal(t, "018f47a2-9c3d-7abc-8def-0123456789ac", resp.Tasks[0].ID)
+		assert.Equal(t, "018f47a2-9c3d-7abc-8def-0123456789ab", resp.Tasks[0].UserID)
 		assert.Equal(t, "課題レポート提出", resp.Tasks[0].Title)
 		assert.Equal(t, "第5章の要約を含むこと", resp.Tasks[0].Comment)
 		assert.Equal(t, "high", resp.Tasks[0].Priority)
@@ -120,7 +120,7 @@ func TestCreateTaskHandler(t *testing.T) {
 			Tasks: []*model.Task{
 				{
 					ID:          "task-1",
-					UserID:      "550e8400-e29b-41d4-a716-446655440000",
+					UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 					Title:       "週次ゼミ発表準備",
 					Comment:     "進捗スライド作成",
 					Priority:    "medium",
@@ -132,7 +132,7 @@ func TestCreateTaskHandler(t *testing.T) {
 				},
 				{
 					ID:          "task-2",
-					UserID:      "550e8400-e29b-41d4-a716-446655440000",
+					UserID:      "018f47a2-9c3d-7abc-8def-0123456789ab",
 					Title:       "週次ゼミ発表準備",
 					Comment:     "進捗スライド作成",
 					Priority:    "medium",
@@ -147,7 +147,7 @@ func TestCreateTaskHandler(t *testing.T) {
 
 		mockSvc := &mockTaskService{
 			createTaskFunc: func(ctx context.Context, userID string, req *model.CreateTaskRequest) (*model.CreateTaskResponse, error) {
-				assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", userID)
+				assert.Equal(t, "018f47a2-9c3d-7abc-8def-0123456789ab", userID)
 				require.NotNil(t, req.IsRecurring)
 				assert.True(t, *req.IsRecurring)
 				require.NotNil(t, req.RecurringRule)
@@ -174,7 +174,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)
@@ -196,8 +196,8 @@ func TestCreateTaskHandler(t *testing.T) {
 			CreatedCount: 1,
 			Tasks: []*model.Task{
 				{
-					ID:        "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-					UserID:    "550e8400-e29b-41d4-a716-446655440000",
+					ID:        "018f47a2-9c3d-7abc-8def-0123456789ac",
+					UserID:    "018f47a2-9c3d-7abc-8def-0123456789ab",
 					Title:     "課題レポート提出",
 					Comment:   "第1行\n第2行",
 					Priority:  "medium",
@@ -224,7 +224,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)
@@ -287,7 +287,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)
@@ -313,7 +313,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(invalidJSON))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)
@@ -346,7 +346,7 @@ func TestCreateTaskHandler(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/api/tasks", bytes.NewBufferString(reqBody))
 		c.Request.Header.Set("Content-Type", "application/json")
-		c.Set("userID", "550e8400-e29b-41d4-a716-446655440000")
+		c.Set("userID", "018f47a2-9c3d-7abc-8def-0123456789ab")
 
 		h := CreateTaskHandler(mockSvc)
 		h(c)

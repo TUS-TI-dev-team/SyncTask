@@ -2,9 +2,9 @@ package util
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,11 +40,12 @@ func TestMaskEmail(t *testing.T) {
 }
 
 func TestGenerateOTPSessionID(t *testing.T) {
-	t.Run("正常系: 接頭辞 'otp_sess_' で始まるURLセーフな文字列を生成すること", func(t *testing.T) {
+	t.Run("正常系: @spec UUIDv4形式のOTPセッションIDを生成すること", func(t *testing.T) {
 		id, err := GenerateOTPSessionID()
 		require.NoError(t, err)
-		assert.True(t, strings.HasPrefix(id, "otp_sess_"))
-		assert.Greater(t, len(id), len("otp_sess_"))
+		parsed, parseErr := uuid.Parse(id)
+		require.NoError(t, parseErr)
+		assert.Equal(t, uuid.Version(4), parsed.Version())
 		// URL-safe checks
 		assert.NotContains(t, id, "/")
 		assert.NotContains(t, id, "+")
@@ -59,6 +60,16 @@ func TestGenerateOTPSessionID(t *testing.T) {
 			assert.NotContains(t, set, id)
 			set[id] = struct{}{}
 		}
+	})
+}
+
+func TestGenerateUUIDv4(t *testing.T) {
+	t.Run("正常系: @spec 暗号学的乱数に基づくUUIDv4を生成すること", func(t *testing.T) {
+		id, err := GenerateUUIDv4()
+		require.NoError(t, err)
+		parsed, parseErr := uuid.Parse(id)
+		require.NoError(t, parseErr)
+		assert.Equal(t, uuid.Version(4), parsed.Version())
 	})
 }
 

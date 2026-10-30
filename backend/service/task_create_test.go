@@ -67,7 +67,7 @@ func strPtr(s string) *string {
 
 func TestTaskService_CreateTask(t *testing.T) {
 	jst := time.FixedZone("JST", 9*60*60)
-	userID := "550e8400-e29b-41d4-a716-446655440000"
+	userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 
 	t.Run("正常系: 単一タスクの作成処理が成功し、生成されたタスクが返却されること", func(t *testing.T) {
 		repo := &mockTaskRepository{
@@ -102,8 +102,9 @@ func TestTaskService_CreateTask(t *testing.T) {
 
 		task := res.Tasks[0]
 		assert.NotEmpty(t, task.ID)
-		_, parseErr := uuid.Parse(task.ID)
-		assert.NoError(t, parseErr)
+		parsedID, parseErr := uuid.Parse(task.ID)
+		require.NoError(t, parseErr)
+		assert.Equal(t, uuid.Version(7), parsedID.Version())
 		assert.Equal(t, userID, task.UserID)
 		assert.Equal(t, "課題レポート提出", task.Title)
 		assert.Equal(t, "第5章の要約を含むこと", task.Comment)
@@ -160,8 +161,9 @@ func TestTaskService_CreateTask(t *testing.T) {
 
 		for i, task := range res.Tasks {
 			assert.NotEmpty(t, task.ID)
-			_, parseErr := uuid.Parse(task.ID)
-			assert.NoError(t, parseErr)
+			parsedID, parseErr := uuid.Parse(task.ID)
+			require.NoError(t, parseErr)
+			assert.Equal(t, uuid.Version(7), parsedID.Version())
 			assert.Equal(t, userID, task.UserID)
 			assert.Equal(t, "週次ゼミ発表準備", task.Title)
 			assert.Equal(t, "進捗スライド作成", task.Comment)

@@ -19,8 +19,8 @@ func TestGetTaskHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("正常系: 有効な task_id 指定時に 200 OK とタスク詳細JSONが返却されること", func(t *testing.T) {
-		userID := "550e8400-e29b-41d4-a716-446655440000"
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
 		now := time.Now()
 		dueTime := now.Add(24 * time.Hour)
 
@@ -74,8 +74,8 @@ func TestGetTaskHandler(t *testing.T) {
 	})
 
 	t.Run("正常系: 締切日時未設定（DueDatetime が nil）かつコメント未入力（空文字）の場合に due_datetime が null として返却されること", func(t *testing.T) {
-		userID := "550e8400-e29b-41d4-a716-446655440000"
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
 		now := time.Now()
 
 		mockResp := &model.GetTaskResponse{
@@ -129,7 +129,7 @@ func TestGetTaskHandler(t *testing.T) {
 	})
 
 	t.Run("異常系: 未ログイン（Context に userID なし）の場合に 401 UNAUTHORIZED を返すこと", func(t *testing.T) {
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
 		mockSvc := &mockTaskService{}
 
 		w := httptest.NewRecorder()
@@ -154,7 +154,7 @@ func TestGetTaskHandler(t *testing.T) {
 	})
 
 	t.Run("異常系: タスクが存在しない（または他者所有）場合に 404 NOT_FOUND を返すこと", func(t *testing.T) {
-		userID := "550e8400-e29b-41d4-a716-446655440000"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
 		taskID := "non-existent-task-id"
 
 		mockSvc := &mockTaskService{
@@ -185,8 +185,8 @@ func TestGetTaskHandler(t *testing.T) {
 	})
 
 	t.Run("異常系: サーバー内部エラー発生時に 500 INTERNAL_SERVER_ERROR を返すこと", func(t *testing.T) {
-		userID := "550e8400-e29b-41d4-a716-446655440000"
-		taskID := "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+		userID := "018f47a2-9c3d-7abc-8def-0123456789ab"
+		taskID := "018f47a2-9c3d-7abc-8def-0123456789ac"
 
 		mockSvc := &mockTaskService{
 			getTaskFunc: func(ctx context.Context, uID, tID string) (*model.GetTaskResponse, error) {
