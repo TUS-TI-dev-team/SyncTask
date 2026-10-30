@@ -1,39 +1,40 @@
 package handler
 
 import (
-        "net/http"
+	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"synctask/backend/model"
 	"synctask/backend/service"
-	"github.com/gin-gonic/gin"
 )
 
-// LogoutHandlerはログインCookieの環境別設定です．
+// LogoutHandlerOptionsはログインCookieの環境別設定です．
 type LogoutHandlerOptions struct {
 	CookieSecure bool
 }
 
-// LogoutHandker は POST /api/auth/logout のHandker を返す。
+// LogoutHandler は POST /api/auth/logout のHandler を返す。
 //
 // @Summary ログアウト
-// @Descripyion セッションID, SCRF トークンを照合し、ログインセッションとCSRF Cookie を削除する
+// @Description セッションID, CSRF トークンを照合し、ログインセッションとCSRF Cookie を削除する
 // @Tags Auth
 // @Produce json
 // @Param X-CSRF-Token header string false "有効なログインセッションがある場合は必須"
 // @Success 200 "ログアウト成功 (レスポンスボディなし)"
 // @Failure 403 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
 // @Router /api/auth/logout [post]
 func LogoutHandler(logoutService service.LogoutService, options LogoutHandlerOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		setLogoutResponseHandlers(c, options.CookieSecure)
+		setLogoutResponseHeaders(c, options.CookieSecure)
 
 		SessionID, _ := c.Cookie("sync_task_sid")
 
 		err := logoutService.Logout(c.Request.Context(), &model.LogoutInput{
-			SessionID:	SessionID,
+			SessionID: SessionID,
 		})
 		if err != nil {
-			writeLogoutError(c, err);
+			writeLogoutError(c, err)
 			return
 		}
 
@@ -56,12 +57,12 @@ func LogoutHandler(logoutService service.LogoutService, options LogoutHandlerOpt
 			Secure:   options.CookieSecure,
 			SameSite: http.SameSiteLaxMode,
 		})
-		c.JSON(http.StatusOK, nil)
+		c.Status(http.StatusOK)
 
 	}
 }
 
-func setLogoutResponseHandlers(c *gin.Context, secure bool){
+func setLogoutResponseHeaders(c *gin.Context, secure bool) {
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
 	c.Header("Pragma", "no-cache")
 	c.Header("X-Content-Type-Options", "nosniff")
