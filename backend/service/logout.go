@@ -20,6 +20,11 @@ func NewLogoutService(repo repository.LogoutRepository) LogoutService {
 	return &logoutService{repo: repo}
 }
 
+// Logout は入力検証後にRepositoryへ原初的なログアウト試行を依頼します。
+//
+// @spec 入力不正はreturn でnilを返す
+// @spec セッション削除成功時および対象セッション不在時はいずれもnilを返す
+// @spec サーバ内の処理で未知のエラーが発生した場合はそれを受け取りそれをそのままhandlerへ返す
 func (s *logoutService) Logout(ctx context.Context, input *model.LogoutInput) error {
 	if input == nil || !input.Validate() {
 		return nil
@@ -31,6 +36,9 @@ func (s *logoutService) Logout(ctx context.Context, input *model.LogoutInput) er
 	result, err := s.repo.AttemptLogout(ctx, attempt)
 	if err != nil {
 		return err
+	}
+	if result == nil {
+		return fmt.Errorf("logout result is nil")
 	}
 
 	switch result.Status {
