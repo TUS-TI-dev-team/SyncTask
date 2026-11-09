@@ -8,7 +8,7 @@ import (
 	"synctask/backend/service"
 )
 
-// LogoutHandlerOptionsはログインCookieの環境別設定です．
+// LogoutHandlerOptionsはログアウトCookieの環境別設定です。
 type LogoutHandlerOptions struct {
 	CookieSecure bool
 }
@@ -28,10 +28,10 @@ func LogoutHandler(logoutService service.LogoutService, options LogoutHandlerOpt
 	return func(c *gin.Context) {
 		setLogoutResponseHeaders(c, options.CookieSecure)
 
-		SessionID, _ := c.Cookie("sync_task_sid")
+		sessionID, _ := c.Cookie("sync_task_sid")
 
 		err := logoutService.Logout(c.Request.Context(), &model.LogoutInput{
-			SessionID: SessionID,
+			SessionID: sessionID,
 		})
 		if err != nil {
 			writeLogoutError(c, err)

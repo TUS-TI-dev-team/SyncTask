@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockLogoutService struct {
@@ -26,7 +27,9 @@ func TestLogoutHandler(t *testing.T) {
 	t.Cleanup(func() { gin.SetMode(gin.DebugMode) })
 
 	t.Run("正常系: 200とsid, csrf を削除するCookie を返すこと", func(t *testing.T) {
+		called := false
 		svc := &mockLogoutService{logoutFunc: func(_ context.Context, input *model.LogoutInput) error {
+			called = true
 			assert.Equal(t, "4c7bcdd6-898b-483f-bd0d-7a4191a0384b", input.SessionID)
 			return nil
 		}}
@@ -38,6 +41,8 @@ func TestLogoutHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Empty(t, w.Body.String())
 		cookie := w.Result().Cookies()
+		require.Len(t, cookie, 2)
+		assert.True(t, called)
 
 		sessionRemove := cookieByName(t, cookie, "sync_task_sid")
 		assert.Equal(t, "", sessionRemove.Value)
@@ -57,8 +62,10 @@ func TestLogoutHandler(t *testing.T) {
 	})
 
 	t.Run("正常系: Cookie が未送信の場合でも200 とsid, csrf を削除するCookie を返すこと", func(t *testing.T) {
+		called := false
 		svc := &mockLogoutService{logoutFunc: func(_ context.Context, input *model.LogoutInput) error {
-			assert.Equal(t, input.SessionID, "")
+			called = true
+			assert.Equal(t, "", input.SessionID)
 			return nil
 		}}
 
@@ -67,6 +74,8 @@ func TestLogoutHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Empty(t, w.Body.String())
 		cookie := w.Result().Cookies()
+		require.Len(t, cookie, 2)
+		assert.True(t, called)
 
 		sessionRemove := cookieByName(t, cookie, "sync_task_sid")
 		assert.Equal(t, "", sessionRemove.Value)
@@ -85,7 +94,7 @@ func TestLogoutHandler(t *testing.T) {
 		assert.Equal(t, -1, csrfRemove.MaxAge)
 	})
 
-	t.Run("異常系: 予期せぬエラー500で失敗", func(t *testing.T) {
+	t.Run("異常系: 予期しないServiceエラー時は500を返しCookie を削除しないこと", func(t *testing.T) {
 		svc := errorLogoutMock(errors.New("unexpected"))
 		w := performLogoutRequest(t, svc, LogoutHandlerOptions{}, nil)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -93,7 +102,7 @@ func TestLogoutHandler(t *testing.T) {
 		assertErrorResponse(t, w, "INTERNAL_SERVER_ERROR")
 	})
 
-	t.Run("異常系: 予期せぬエラーにてmodel.AppError がわたるで失敗", func(t *testing.T) {
+	t.Run("異常系: 予期せぬエラーにてmodel.AppError がわたる形で失敗した際はmodel.AppError にある情報でエラーを返し、Cookie を削除しないこと。", func(t *testing.T) {
 		svc := errorLogoutMock(model.NewBadRequestError("Bad Request", nil))
 		w := performLogoutRequest(t, svc, LogoutHandlerOptions{}, nil)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
