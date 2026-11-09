@@ -65,15 +65,20 @@ func SetupRouter(db *sql.DB, configured ...Options) *gin.Engine {
 	registerMailer := service.NewLogMailer()
 	registerService := service.NewRegisterRequestOtpService(registerRepo, registerMailer, service.RegisterRequestOtpDependencies{})
 
+	loginSessionRepo := repository.NewLoginSessionRepository(db)
+	loginSessionService := service.NewLoginSessionService(loginSessionRepo, service.LoginSessionDependencies{})
+
 	// API ルーティング
-	api := r.Group("/api", middleware.Auth())
+	authenticated := r.Group("/api")
+	authenticated.Use(middleware.Auth(loginSessionService))
 	{
-		api.POST("/tasks", handler.CreateTaskHandler(taskService))
-		api.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
-		api.PATCH("/tasks/:task_id", handler.PatchTaskHandler(taskService))
+		authenticated.POST("/tasks", handler.CreateTaskHandler(taskService))
+		authenticated.GET("/tasks/:task_id", handler.GetTaskHandler(taskService))
+		authenticated.PATCH("/tasks/:task_id", handler.PatchTaskHandler(taskService))
 	}
 
-	api.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))
-	api.POST("/auth/register/request-otp", handler.RegisterRequestOtpHandler(registerService))
+	public := r.Group("/api")
+	public.POST("/auth/login", handler.LoginHandler(loginService, handler.LoginHandlerOptions{CookieSecure: options.CookieSecure}))
+	public.POST("/auth/register/request-otp", handler.RegisterRequestOtpHandler(registerService))
 	return r
 }
