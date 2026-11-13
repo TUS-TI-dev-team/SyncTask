@@ -1,6 +1,7 @@
 package model
 
 import (
+	"time"
 	"github.com/google/uuid"
 )
 
@@ -24,12 +25,14 @@ func (r *LogoutInput) Validate() bool {
 type LogoutStatus string
 
 const (
+	LogoutStatusDbFailed LogoutStatus = "dbfailed"
 	LogoutStatusNotFound LogoutStatus = "notfound"
 	LogoutStatusSuccess  LogoutStatus = "success"
 )
 
 type LogoutAttempt struct {
 	SessionID string
+	Now       time.Time
 }
 
 type LogoutAttemptResult struct {

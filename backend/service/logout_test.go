@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,7 @@ func (m *mockLogoutRepository) AttemptLogout(ctx context.Context, attempt *model
 }
 
 func TestLogoutService(t *testing.T) {
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
 
 	t.Run("正常系: セッションID が正常なものでありrepository 内でもエラーがない際にnilを返すこと", func(t *testing.T) {
 		input := model.LogoutInput{SessionID: "4013350b-9e2b-4ef8-9f98-b07b7341418f"}
@@ -27,12 +29,15 @@ func TestLogoutService(t *testing.T) {
 		repo := &mockLogoutRepository{attemptFunc: func(_ context.Context, attempt *model.LogoutAttempt) (*model.LogoutAttemptResult, error) {
 			called = true
 			assert.Equal(t, input.SessionID, attempt.SessionID)
+			assert.Equal(t, now, attempt.Now)
 			return &model.LogoutAttemptResult{
 				Status: model.LogoutStatusSuccess,
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &input)
 		require.NoError(t, err)
 		assert.True(t, called)
@@ -44,12 +49,15 @@ func TestLogoutService(t *testing.T) {
 		repo := &mockLogoutRepository{attemptFunc: func(_ context.Context, attempt *model.LogoutAttempt) (*model.LogoutAttemptResult, error) {
 			called = true
 			assert.Equal(t, input.SessionID, attempt.SessionID)
+			assert.Equal(t, now, attempt.Now)
 			return &model.LogoutAttemptResult{
 				Status: model.LogoutStatusSuccess,
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &input)
 		require.NoError(t, err)
 		assert.False(t, called)
@@ -64,7 +72,9 @@ func TestLogoutService(t *testing.T) {
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), nil)
 		require.NoError(t, err)
 		assert.False(t, called)
@@ -82,28 +92,33 @@ func TestLogoutService(t *testing.T) {
 		repo := &mockLogoutRepository{attemptFunc: func(_ context.Context, attempt *model.LogoutAttempt) (*model.LogoutAttemptResult, error) {
 			called = true
 			assert.Equal(t, input.SessionID, attempt.SessionID)
+			assert.Equal(t, now, attempt.Now)
 			return &model.LogoutAttemptResult{
 				Status: model.LogoutStatusSuccess,
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err = svc.Logout(context.Background(), &input)
 		require.NoError(t, err)
 		assert.False(t, called)
 	})
 
-	t.Run("異常系: セッションID が正常かつrepository にてdb のエラーが帰ってきた際にerrをそのまま伝播させること", func(t *testing.T) {
+	t.Run("異常系: セッションID が正常かつrepository にてdb のエラーが帰ってきた際にnil を返すこと", func(t *testing.T) {
 		dbError := errors.New("database failed")
 		called := false
 		repo := &mockLogoutRepository{attemptFunc: func(context.Context, *model.LogoutAttempt) (*model.LogoutAttemptResult, error) {
 			called = true
-			return nil, dbError
+			return &model.LogoutAttemptResult{ Status: model.LogoutStatusDbFailed }, dbError
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &model.LogoutInput{SessionID: uuid.New().String()})
-		require.ErrorIs(t, err, dbError)
+		require.NoError(t, err)
 		assert.True(t, called)
 	})
 
@@ -117,7 +132,9 @@ func TestLogoutService(t *testing.T) {
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &input)
 		require.NoError(t, err)
 		assert.True(t, called)
@@ -133,7 +150,9 @@ func TestLogoutService(t *testing.T) {
 			}, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &input)
 		require.ErrorContains(t, err, "unknown logout status")
 		_, ok := err.(*model.AppError)
@@ -149,7 +168,9 @@ func TestLogoutService(t *testing.T) {
 			return nil, nil
 		}}
 
-		svc := NewLogoutService(repo)
+		svc := NewLogoutService(repo, LogoutDependencies{
+			Now: func() time.Time { return now },
+		})
 		err := svc.Logout(context.Background(), &input)
 		require.ErrorContains(t, err, "logout result is nil")
 		_, ok := err.(*model.AppError)
