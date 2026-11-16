@@ -33,13 +33,13 @@ func (s *loginSessionService) ValidateSession(ctx context.Context, ID string) (*
 	res, err := s.repo.FindBySessionID(ctx, ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, model.NewUnauthorizedError("active session not found")
+			return nil, model.NewUnauthorizedError("authentication failed")
 		}
 		return nil, err
 	}
 
 	if res.ExpiresAt.Before(s.deps.Now()) {
-		return nil, model.NewUnauthorizedError("active session not found")
+		return nil, model.NewUnauthorizedError("authentication failed")
 	}
 
 	return &model.LoginSessionServiceResult{UserID: res.UserID, ExpiresAt: res.ExpiresAt}, nil

@@ -21,12 +21,12 @@ func Auth(s service.LoginSessionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, err := c.Cookie(sessionCookieKey)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, model.NewUnauthorizedError("not logged in"))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, model.NewUnauthorizedError("authentication failed"))
 			return
 		}
 
 		if _, err := uuid.Parse(sid); err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, model.NewUnauthorizedError("not logged in"))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, model.NewUnauthorizedError("authentication failed"))
 			return
 		}
 
