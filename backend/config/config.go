@@ -13,6 +13,7 @@ type Config struct {
 	FrontendURL    string
 	CookieSecure   bool
 	TrustedProxies []string
+	AutoSeed       bool
 	DB             DBConfig
 }
 
@@ -54,12 +55,23 @@ func getCSVEnv(key string) []string {
 }
 
 // Load は環境変数から設定を読み込み Config 構造体を返します。
+//
+// @spec 設定: GIN_MODE が release 以外かつ AUTO_SEED が明示的に false でない場合、AutoSeed を true に設定すること
+// @spec 設定: GIN_MODE が release の場合、AUTO_SEED の指定に関わらず AutoSeed を強制的に false に設定すること
 func Load() *Config {
+	ginMode := getEnvOrDefault("GIN_MODE", "debug")
+
+	var autoSeed bool
+	if ginMode != "release" {
+		autoSeed = getBoolEnvOrDefault("AUTO_SEED", true)
+	}
+
 	return &Config{
-		GinMode:        getEnvOrDefault("GIN_MODE", "debug"),
+		GinMode:        ginMode,
 		FrontendURL:    getEnvOrDefault("FRONTEND_URL", "http://localhost:3000"),
 		CookieSecure:   getBoolEnvOrDefault("COOKIE_SECURE", false),
 		TrustedProxies: getCSVEnv("TRUSTED_PROXIES"),
+		AutoSeed:       autoSeed,
 		DB: DBConfig{
 			Host:     getEnvOrDefault("DB_HOST", "localhost"),
 			Port:     getEnvOrDefault("DB_PORT", "5432"),

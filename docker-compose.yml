@@ -38,6 +38,7 @@ services:
         condition: service_healthy
     environment:
       - GIN_MODE=debug
+      - AUTO_SEED=${AUTO_SEED:-true}
       - DB_HOST=db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-synctask}

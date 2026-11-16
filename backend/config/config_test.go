@@ -13,6 +13,7 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("FRONTEND_URL")
 	os.Unsetenv("COOKIE_SECURE")
 	os.Unsetenv("TRUSTED_PROXIES")
+	os.Unsetenv("AUTO_SEED")
 	os.Unsetenv("DB_HOST")
 	os.Unsetenv("DB_PORT")
 	os.Unsetenv("DB_USER")
@@ -29,6 +30,7 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, "synctask", cfg.DB.User)
 	assert.False(t, cfg.CookieSecure)
 	assert.Empty(t, cfg.TrustedProxies)
+	assert.True(t, cfg.AutoSeed)
 	assert.Equal(t, "synctask_pass", cfg.DB.Password)
 	assert.Equal(t, "synctask_dev", cfg.DB.Name)
 	assert.Equal(t, "disable", cfg.DB.SSLMode)
@@ -36,16 +38,17 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_CustomEnv(t *testing.T) {
-	t.Setenv("GIN_MODE", "release")
-	t.Setenv("FRONTEND_URL", "https://synctask.app")
-	t.Setenv("DB_HOST", "db")
-	t.Setenv("DB_PORT", "5433")
-	t.Setenv("DB_USER", "custom_user")
-	t.Setenv("DB_PASSWORD", "custom_pass")
-	t.Setenv("DB_NAME", "custom_db")
-	t.Setenv("DB_SSLMODE", "require")
-	t.Setenv("COOKIE_SECURE", "true")
-	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8,192.0.2.10")
+	tt := t
+	tt.Setenv("GIN_MODE", "release")
+	tt.Setenv("FRONTEND_URL", "https://synctask.app")
+	tt.Setenv("DB_HOST", "db")
+	tt.Setenv("DB_PORT", "5433")
+	tt.Setenv("DB_USER", "custom_user")
+	tt.Setenv("DB_PASSWORD", "custom_pass")
+	tt.Setenv("DB_NAME", "custom_db")
+	tt.Setenv("DB_SSLMODE", "require")
+	tt.Setenv("COOKIE_SECURE", "true")
+	tt.Setenv("TRUSTED_PROXIES", "10.0.0.0/8,192.0.2.10")
 
 	cfg := Load()
 
@@ -53,6 +56,7 @@ func TestLoad_CustomEnv(t *testing.T) {
 	assert.Equal(t, "https://synctask.app", cfg.FrontendURL)
 	assert.True(t, cfg.CookieSecure)
 	assert.Equal(t, []string{"10.0.0.0/8", "192.0.2.10"}, cfg.TrustedProxies)
+	assert.False(t, cfg.AutoSeed)
 	assert.Equal(t, "db", cfg.DB.Host)
 	assert.Equal(t, "5433", cfg.DB.Port)
 	assert.Equal(t, "custom_user", cfg.DB.User)
@@ -60,4 +64,30 @@ func TestLoad_CustomEnv(t *testing.T) {
 	assert.Equal(t, "custom_db", cfg.DB.Name)
 	assert.Equal(t, "require", cfg.DB.SSLMode)
 	assert.Equal(t, "host=db port=5433 user=custom_user password=custom_pass dbname=custom_db sslmode=require", cfg.DB.DSN())
+}
+
+func TestLoad_AutoSeed(t *testing.T) {
+	t.Run("正常系: GIN_MODE が release 以外かつ AUTO_SEED 未設定時は true となること", func(t *testing.T) {
+		t.Setenv("GIN_MODE", "debug")
+		os.Unsetenv("AUTO_SEED")
+
+		cfg := Load()
+		assert.True(t, cfg.AutoSeed)
+	})
+
+	t.Run("正常系: GIN_MODE が release 以外で AUTO_SEED=false が指定された場合は false となること", func(t *testing.T) {
+		t.Setenv("GIN_MODE", "debug")
+		t.Setenv("AUTO_SEED", "false")
+
+		cfg := Load()
+		assert.False(t, cfg.AutoSeed)
+	})
+
+	t.Run("正常系: GIN_MODE が release の場合は AUTO_SEED=true を指定しても強制的に false となること", func(t *testing.T) {
+		t.Setenv("GIN_MODE", "release")
+		t.Setenv("AUTO_SEED", "true")
+
+		cfg := Load()
+		assert.False(t, cfg.AutoSeed)
+	})
 }

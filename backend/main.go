@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"synctask/backend/config"
 	"synctask/backend/db"
+	"synctask/backend/db/seed"
 	"synctask/backend/router"
 )
 
@@ -25,6 +27,14 @@ func main() {
 		log.Fatalf("DB接続に失敗しました: %v", err)
 	}
 	defer database.Close()
+
+	if cfg.AutoSeed {
+		ctx := context.Background()
+		if err := seed.Run(ctx, database, false); err != nil {
+			log.Fatalf("シードデータの投入に失敗しました: %v", err)
+		}
+		log.Println("開発用シードデータの同期が完了しました")
+	}
 
 	r := router.SetupRouter(database, router.Options{
 		CookieSecure:   cfg.CookieSecure,
