@@ -112,3 +112,7 @@ go run main.go
 ```bash
 docker compose up backend
 ```
+
+### VS Code でのデバッグ起動
+VS Code 上でブレークポイントを使ったデバッグ実行が可能です。詳しい設定および手順は **[VS Code デバッグ手順書](../docs/guides/vscode_debugging.md)** を参照してください。
+

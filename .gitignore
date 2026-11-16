@@ -1,5 +1,7 @@
 tmp/
 node_modules/
+__debug_bin*
+
 
 # Environment variables
 .env
