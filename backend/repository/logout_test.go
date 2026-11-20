@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 	"context"
-	"database/sql"
 
 	"synctask/backend/model"
 
@@ -19,14 +18,33 @@ func TestLogoutRepository_AttemptLogout(t *testing.T) {
 		SessionID: "e81d3567-07fd-43b0-9f90-d465fbeed493",
 		Now: now,
 	}
-
 	t.Run("正常系: 正常なセッションID を取得際にuid の取得,セッションの削除,再認証のリセットがすべて正常に commit され完了ステータスを返すこと。", func(t *testing.T) {
+		uid := "01a1e35b-31b3-77dd-a145-b3aba70603de"
+		expired_at := now.Add(time.Minute)
+
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		defer db.Close()
 		repo := NewLogoutRepository(db)
 
 		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT USER_ID, EXPIRES_AT.+FOR UPDATE").
+			WithArgs(attempt.SessionID).
+			WillReturnRows(sqlmock.NewRows([]string{"USER_ID", "EXPIRES_AT"}).
+				AddRow(uid, expired_at))
+		mock.ExpectExec("DELETE FROM LOGIN_SESSION").
+			WithArgs(attempt.SessionID).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec("UPDATE LOGIN_ACCOUNT").
+			WithArgs(attempt.Now, uid).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
+
+		result, err := repo.AttemptLogout(context.Background(), attempt)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, model.LogoutStatusSuccess, result.Status)
+		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
 	t.Run("正常系: 正常なセッションID を取得際にuid の取得,セッションの削除,再認証のリセットがすべて正常に commit され完了ステータスを返すこと。", func(t *testing.T) {

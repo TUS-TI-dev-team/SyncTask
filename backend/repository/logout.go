@@ -82,6 +82,7 @@ const selectTargetUserIDQuery = `
 SELECT USER_ID, EXPIRES_AT
 FROM LOGIN_SESSION
 WHERE SESSION_ID = $1
+FOR UPDATE
 `
 
 const deleteLoginSessionQuery = `
